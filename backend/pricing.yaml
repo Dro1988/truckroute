@@ -1,0 +1,32 @@
+# TruckRoute pricing configuration. Edit prices here — never hard-code in code.
+# Currency: USD.
+plans:
+  free:
+    name: "Free"
+    price_monthly: 0.0
+    price_annual: 0.0
+    features:
+      - "Trip planning (limited)"
+      - "Basic map"
+      - "Saved locations (up to 10)"
+  premium:
+    name: "Premium"
+    price_monthly: 7.99
+    price_annual: 79.99
+    trial_days: 14
+    features:
+      - "Unlimited navigation"
+      - "Truck-safe routing"
+      - "Fuel planning"
+      - "Truck parking search"
+      - "Trip planner"
+      - "Priority support"
+
+# Google Play / App Store product IDs (wired in Phase 5).
+store_products:
+  google_play:
+    monthly: "truckroute_premium_monthly"
+    annual: "truckroute_premium_annual"
+  app_store:
+    monthly: "truckroute_premium_monthly"
+    annual: "truckroute_premium_annual"

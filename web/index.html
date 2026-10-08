@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TruckRoute</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.0.0/dist/maplibre-gl.css">
+<link rel="stylesheet" href="styles.css">
+<script src="https://unpkg.com/maplibre-gl@5.0.0/dist/maplibre-gl.js"></script>
+<script src="config.js"></script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ===== Auth screen ===== -->
+  <section id="screen-auth" class="screen">
+    <div class="auth-card">
+      <div class="brand"><span class="brand-mark">🚚</span><h1>TruckRoute</h1></div>
+      <p class="tagline">Truck-smart navigation for a fraction of the price.</p>
+      <div class="tabs">
+        <button id="tab-login" class="tab active">Log in</button>
+        <button id="tab-register" class="tab">Sign up</button>
+      </div>
+      <div id="form-login">
+        <input id="login-email" type="email" placeholder="Email" autocomplete="email">
+        <input id="login-password" type="password" placeholder="Password" autocomplete="current-password">
+        <button id="btn-login" class="btn-primary">Log in</button>
+      </div>
+      <div id="form-register" hidden>
+        <input id="reg-name" type="text" placeholder="Display name" autocomplete="name">
+        <input id="reg-email" type="email" placeholder="Email" autocomplete="email">
+        <input id="reg-password" type="password" placeholder="Password (8+ characters)" autocomplete="new-password">
+        <button id="btn-register" class="btn-primary">Create account</button>
+      </div>
+      <p id="auth-error" class="error"></p>
+      <p class="fineprint">No signup walls inside — one account works on phone and web.</p>
+    </div>
+  </section>
+
+  <!-- ===== Map screen ===== -->
+  <section id="screen-map" class="screen" hidden>
+    <div id="map"></div>
+    <div id="search-bar">
+      <input id="search-dest" type="text" placeholder="Where to?" autocomplete="off" aria-label="Destination search">
+      <button id="btn-clear-search" class="icon-btn" hidden>✕</button>
+      <div id="suggest-list" hidden></div>
+    </div>
+    <div id="map-controls">
+      <button id="btn-recenter" class="icon-btn" title="Recenter">◎</button>
+      <button id="btn-style" class="icon-btn" title="Map style">🗺</button>
+      <button id="btn-parking" class="icon-btn" title="Find truck parking">🅿</button>
+    </div>
+    <div id="gps-banner" hidden>Waiting for GPS…</div>
+    <div id="route-panel" hidden>
+      <div id="route-options"></div>
+      <button id="btn-trip-summary" class="btn-primary">Review trip</button>
+      <button id="btn-cancel-route" class="btn-ghost">Clear</button>
+    </div>
+    <!-- Navigation HUD -->
+    <div id="nav-hud" hidden>
+      <div id="nav-next">
+        <div id="nav-instruction">—</div>
+        <div id="nav-dist">—</div>
+      </div>
+      <div id="nav-stats">
+        <div><span id="nav-eta">—</span><label>ETA</label></div>
+        <div><span id="nav-remain">—</span><label>miles left</label></div>
+        <div><span id="nav-time">—</span><label>drive time</label></div>
+      </div>
+      <button id="btn-end-nav" class="btn-danger">End</button>
+    </div>
+  </section>
+
+  <!-- ===== Trip summary modal ===== -->
+  <div id="modal-summary" class="modal" hidden>
+    <div class="modal-card">
+      <h2>Trip summary</h2>
+      <div id="summary-route-tabs"></div>
+      <dl id="summary-list"></dl>
+      <div id="summary-warnings"></div>
+      <div id="summary-hos"></div>
+      <button id="btn-start-nav" class="btn-primary btn-big">▶ Start navigation</button>
+      <button id="btn-close-summary" class="btn-ghost">Back</button>
+    </div>
+  </div>
+
+  <!-- ===== Trucks screen ===== -->
+  <section id="screen-trucks" class="screen" hidden>
+    <header class="page-head"><h2>My trucks</h2><button id="btn-add-truck" class="btn-primary btn-sm">+ Add truck</button></header>
+    <div id="truck-list" class="card-list"></div>
+    <div id="truck-form-card" class="form-card" hidden>
+      <h3 id="truck-form-title">Add truck</h3>
+      <div class="form-grid">
+        <label>Nickname<input id="t-nickname" placeholder="e.g. Big Red"></label>
+        <label>Make<input id="t-make" placeholder="Peterbilt"></label>
+        <label>Model<input id="t-model" placeholder="579"></label>
+        <label>Year<input id="t-year" type="number" placeholder="2025"></label>
+        <label>Height (ft)<input id="t-hft" type="number" value="13"></label>
+        <label>Height (in)<input id="t-hin" type="number" value="6"></label>
+        <label>Width (in)<input id="t-win" type="number" value="102"></label>
+        <label>Length (ft)<input id="t-lft" type="number" step="0.5" value="72"></label>
+        <label>Weight (lbs)<input id="t-weight" type="number" value="80000"></label>
+        <label>Trailer length (ft)<input id="t-tlft" type="number" step="0.5" placeholder="53"></label>
+        <label>Axles<input id="t-axles" type="number" value="5"></label>
+        <label>Fuel capacity (gal)<input id="t-cap" type="number" value="240"></label>
+        <label>Fuel level (%)<input id="t-level" type="number" value="100"></label>
+        <label>Avg MPG<input id="t-mpg" type="number" step="0.1" value="7.2"></label>
+        <label>Fuel type<input id="t-fueltype" value="diesel"></label>
+        <label>Hazmat (if any)<input id="t-hazmat" placeholder="e.g. flammable"></label>
+      </div>
+      <div class="form-actions">
+        <button id="btn-save-truck" class="btn-primary">Save truck</button>
+        <button id="btn-cancel-truck" class="btn-ghost">Cancel</button>
+      </div>
+      <p id="truck-form-error" class="error"></p>
+    </div>
+  </section>
+
+  <!-- ===== Saved screen ===== -->
+  <section id="screen-saved" class="screen" hidden>
+    <header class="page-head"><h2>Saved places</h2><button id="btn-add-saved" class="btn-primary btn-sm">+ Add current search</button></header>
+    <div id="saved-list" class="card-list"></div>
+  </section>
+
+  <!-- ===== Trips screen ===== -->
+  <section id="screen-trips" class="screen" hidden>
+    <header class="page-head"><h2>My trips</h2></header>
+    <div id="trip-list" class="card-list"></div>
+  </section>
+
+  <!-- ===== Account screen ===== -->
+  <section id="screen-account" class="screen" hidden>
+    <header class="page-head"><h2>Account</h2></header>
+    <div class="form-card">
+      <h3>Profile</h3>
+      <label>Display name<input id="a-name"></label>
+      <label>Email<input id="a-email" type="email"></label>
+      <button id="btn-save-profile" class="btn-primary">Save profile</button>
+    </div>
+    <div class="form-card">
+      <h3>Driving preferences</h3>
+      <label class="check"><input id="p-voice" type="checkbox"> Voice navigation</label>
+      <label class="check"><input id="p-autorecalc" type="checkbox"> Auto-recalculate when off route</label>
+      <label>Available drive hours (HOS planning)<input id="p-hours" type="number" step="0.5" placeholder="e.g. 8"></label>
+      <label>Break every (hours)<input id="p-break" type="number" step="0.5" placeholder="e.g. 4"></label>
+      <label>Map style
+        <select id="p-style"><option value="dark">Dark</option><option value="light">Light</option><option value="satellite">Satellite</option></select>
+      </label>
+      <button id="btn-save-prefs" class="btn-primary">Save preferences</button>
+      <p class="fineprint">HOS figures are trip-planning estimates only — not an ELD.</p>
+    </div>
+    <div class="form-card">
+      <h3>Subscription</h3>
+      <p id="sub-status">—</p>
+      <p class="fineprint" id="sub-price"></p>
+    </div>
+    <div class="form-card">
+      <h3>Data</h3>
+      <button id="btn-export" class="btn-ghost">Download my data</button>
+      <button id="btn-change-pw" class="btn-ghost">Change password</button>
+      <button id="btn-logout" class="btn-ghost">Log out</button>
+      <button id="btn-delete-account" class="btn-danger">Delete account</button>
+    </div>
+  </section>
+
+  <!-- ===== Admin screen ===== -->
+  <section id="screen-admin" class="screen" hidden>
+    <header class="page-head"><h2>Admin</h2></header>
+    <div class="form-card"><h3>Providers</h3><p id="admin-providers">—</p></div>
+    <div class="form-card"><h3>Usage &amp; cost (30 days)</h3><div id="admin-usage">—</div></div>
+    <div class="form-card"><h3>Recent errors</h3><div id="admin-errors">—</div></div>
+  </section>
+
+  <!-- ===== Bottom nav ===== -->
+  <nav id="bottom-nav" hidden>
+    <button data-screen="map" class="nav-btn active">🧭<span>Map</span></button>
+    <button data-screen="trucks" class="nav-btn">🚛<span>Trucks</span></button>
+    <button data-screen="saved" class="nav-btn">📍<span>Saved</span></button>
+    <button data-screen="trips" class="nav-btn">🗺️<span>Trips</span></button>
+    <button data-screen="account" class="nav-btn">👤<span>Account</span></button>
+    <button data-screen="admin" class="nav-btn" id="nav-admin" hidden>🛠<span>Admin</span></button>
+  </nav>
+</div>
+<div id="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

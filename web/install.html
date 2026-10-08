@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install TruckRoute for Android</title>
+<link rel="stylesheet" href="/assets/styles.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100dvh; padding: 24px; }
+  .card { max-width: 440px; text-align: center; }
+  .steps { text-align: left; color: var(--muted); font-size: 15px; }
+  .steps li { margin: 8px 0; }
+  .ver { color: var(--muted); font-size: 13px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="card form-card">
+  <div class="brand"><span class="brand-mark">🚚</span><h1>TruckRoute</h1></div>
+  <p class="tagline">Get the Android app</p>
+  <a href="/TruckRoute.apk" class="btn-primary" style="text-decoration:none" download>⬇ Download TruckRoute.apk</a>
+  <ol class="steps">
+    <li>Tap the download button above.</li>
+    <li>Open the file and allow <strong>“Install unknown apps”</strong> for your browser when asked.</li>
+    <li>Open TruckRoute, create your account, add your truck, and go.</li>
+  </ol>
+  <p class="ver">Version <span id="ver">1.0</span> · Android 8.0+ · <a href="/" style="color:var(--accent)">Use the web version instead</a></p>
+</div>
+<script>
+  fetch("/api/health").then(r => r.json()).then(j => {
+    document.getElementById("ver").textContent = (j.version || "1.0").replace("-mvp", "");
+  }).catch(() => {});
+</script>
+</body>
+</html>
