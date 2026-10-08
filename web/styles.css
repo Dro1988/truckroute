@@ -74,7 +74,7 @@ button { font-family: inherit; }
 #gps-banner { position: absolute; top: calc(76px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
   background: var(--card); border: 1px solid var(--line); padding: 8px 16px; border-radius: 20px;
   font-size: 14px; color: var(--muted); z-index: 5; }
-#route-panel { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 5;
+#route-panel { position: absolute; left: 12px; right: 12px; bottom: calc(88px + env(safe-area-inset-bottom)); z-index: 5;
   background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 12px; }
 #route-options { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 8px; }
 .route-opt { flex: 1 0 30%; min-width: 130px; background: var(--bg2); border: 2px solid var(--line);

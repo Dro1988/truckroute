@@ -438,6 +438,7 @@ $("btn-start-nav").onclick = async () => {
   } catch (e) {}
   $("route-panel").hidden = true;
   $("search-bar").style.display = "none";
+  $("bottom-nav").style.display = "none";
   $("nav-hud").hidden = false;
   nav.startTime = Date.now();
   speak("Navigation started. " + (nav.maneuvers[0] ? nav.maneuvers[0].instruction : ""));
@@ -451,6 +452,7 @@ $("btn-end-nav").onclick = async () => {
   state.sessionId = null;
   $("nav-hud").hidden = true;
   $("search-bar").style.display = "";
+  $("bottom-nav").style.display = "";
   $("route-panel").hidden = false;
   if (map && map.getSource("route-done"))
     map.getSource("route-done").setData({ type: "FeatureCollection", features: [] });
