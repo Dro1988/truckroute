@@ -53,6 +53,8 @@ echo "== 3. aapt2 compile + link =="
 cp -r "$PROJ/app/src/main/res/." "$BUILD/res/"
 "$AAPT2" compile --dir "$BUILD/res" -o "$BUILD/compiled/"
 sed "s|@mipmap/ic_launcher|@mipmap/ic_launcher|" "$PROJ/app/src/main/AndroidManifest.xml" > "$BUILD/AndroidManifest.xml"
+# aapt2 requires the package attribute (AGP normally injects it)
+sed -i 's|<manifest |<manifest package="com.truckroute.app" |' "$BUILD/AndroidManifest.xml"
 # reference the icon only if we generated one
 if [ ! -f "$BUILD/res/mipmap-xxxhdpi/ic_launcher.png" ]; then
   sed -i 's/ android:icon="@mipmap\/ic_launcher"//' "$BUILD/AndroidManifest.xml" || true

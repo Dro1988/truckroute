@@ -14,7 +14,19 @@ from routers import admin, auth, nav, routes, saved, search, subscription, trips
 from routers.trucks import pref_router, router as trucks_router
 
 settings = get_settings()
-models.Base.metadata.create_all(bind=engine)
+
+# Create tables, retrying briefly: on a fresh deploy the database can still
+# be provisioning when the web service first boots.
+import time  # noqa: E402
+
+for _attempt in range(12):
+    try:
+        models.Base.metadata.create_all(bind=engine)
+        break
+    except Exception:
+        if _attempt == 11:
+            raise
+        time.sleep(5)
 
 app = FastAPI(title=f"{settings.APP_NAME} API", version="0.1.0-mvp")
 
