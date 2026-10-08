@@ -76,6 +76,34 @@ def test_nominatim_adapter_parses(monkeypatch):
     assert svc.suggest("a") == []  # too short
 
 
+def test_photon_fallback_when_nominatim_empty(monkeypatch):
+    photon_payload = {"features": [{
+        "geometry": {"type": "Point", "coordinates": [-84.388, 33.749]},
+        "properties": {"name": "Atlanta", "city": "Atlanta", "state": "Georgia",
+                       "country": "United States", "osm_value": "city"},
+    }]}
+
+    def fake_get(url, *a, **k):
+        if "photon" in url:
+            return FakeResp(photon_payload)
+        return FakeResp([])  # nominatim blocked/empty
+
+    monkeypatch.setattr(dev_mod.httpx, "get", fake_get)
+    svc = dev_mod.NominatimGeocoder()
+    out = svc.suggest("atlanta")
+    assert len(out) == 1
+    assert out[0].label == "Atlanta"
+    assert out[0].lat == pytest.approx(33.749)
+    assert "Georgia" in out[0].address
+
+
+def test_photon_fallback_when_both_down(monkeypatch):
+    def boom(*a, **k):
+        raise ConnectionError("down")
+    monkeypatch.setattr(dev_mod.httpx, "get", boom)
+    assert dev_mod.NominatimGeocoder().suggest("atlanta") == []
+
+
 def _here_payload():
     # Real flexible-polyline round trip: encode known coords, build a HERE-shaped response.
     coords = [(33.749, -84.388), (33.760, -84.390), (33.775, -84.395)]

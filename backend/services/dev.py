@@ -20,6 +20,7 @@ from .base import (
 )
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+PHOTON_URL = "https://photon.komoot.io/api/"
 OSRM_URL = "https://router.project-osrm.org/route/v1/driving"
 HEADERS = {"User-Agent": "TruckRoute/1.0 (contact: support@truckroute.app)"}
 
@@ -28,6 +29,14 @@ class NominatimGeocoder(GeocodingService):
     name = "dev-nominatim"
 
     def _search(self, query: str, limit: int) -> list[PlaceResult]:
+        # Nominatim first; Photon (komoot) as automatic fallback — some
+        # hosting egress IPs get rate-limited by Nominatim.
+        out = self._nominatim(query, limit)
+        if out:
+            return out
+        return self._photon(query, limit)
+
+    def _nominatim(self, query: str, limit: int) -> list[PlaceResult]:
         params = {
             "q": query,
             "format": "jsonv2",
@@ -53,6 +62,33 @@ class NominatimGeocoder(GeocodingService):
                     )
                 )
             except (KeyError, ValueError):
+                continue
+        return out
+
+    def _photon(self, query: str, limit: int) -> list[PlaceResult]:
+        try:
+            r = httpx.get(PHOTON_URL, params={"q": query, "limit": limit},
+                          headers=HEADERS, timeout=15)
+            r.raise_for_status()
+            feats = r.json().get("features", [])
+        except Exception:
+            return []
+        out = []
+        for f in feats:
+            try:
+                p = f.get("properties", {})
+                g = f.get("geometry", {})
+                coords = g.get("coordinates", [0, 0])
+                bits = [p.get("name"), p.get("city"), p.get("state"), p.get("country")]
+                label = p.get("name") or ", ".join(b for b in bits if b)
+                out.append(PlaceResult(
+                    label=label or "Unknown",
+                    address=", ".join(b for b in bits if b),
+                    lat=float(coords[1]),
+                    lng=float(coords[0]),
+                    category=p.get("osm_value", "place"),
+                ))
+            except (KeyError, ValueError, IndexError, TypeError):
                 continue
         return out
 
