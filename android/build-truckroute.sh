@@ -21,7 +21,10 @@ rm -rf "$BUILD"
 mkdir -p "$BUILD/compiled" "$BUILD/gen" "$BUILD/classes" "$BUILD/dex" "$BUILD/assets" "$BUILD/res"
 
 echo "== 1. assets (web app + generated config) =="
-cp -r "$REPO/web/." "$BUILD/assets/"
+# Exclude the APK itself: web/ also hosts the download, but it must not be
+# bundled inside the APK (would nest the old build into the new one).
+rsync -a --exclude 'TruckRoute.apk' "$REPO/web/." "$BUILD/assets/" 2>/dev/null \
+  || (cp -r "$REPO/web/." "$BUILD/assets/" && rm -f "$BUILD/assets/TruckRoute.apk")
 printf 'window.TRUCKROUTE_API = "%s";\n' "$API_BASE" > "$BUILD/assets/config.js"
 find "$BUILD/assets" -type f | wc -l
 
