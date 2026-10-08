@@ -191,7 +191,9 @@ def test_calculate_endpoint_end_to_end(client, monkeypatch):
     assert body["route_id"]
     assert body["trip_id"]
     assert body["hos"]["drive_hours"] == pytest.approx(opt["duration_min"] / 60, rel=0.01)
-    # usage was tracked
+    # usage was tracked (ensure admin exists regardless of test order)
+    client.post("/api/auth/register", json={
+        "email": "admin@examplemail.com", "password": "password123"})
     u = client.get("/api/admin/usage?days=1", headers=auth_headers(client, "admin@examplemail.com")).json()
     assert u["total_calls"] >= 1
     # saved trip exists
