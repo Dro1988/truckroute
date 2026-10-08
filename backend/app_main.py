@@ -83,3 +83,11 @@ if os.path.isdir(WEB_DIR):
     @app.get("/install/", include_in_schema=False)
     def install_page():
         return FileResponse(os.path.join(WEB_DIR, "install.html"))
+
+    @app.get("/TruckRoute.apk", include_in_schema=False)
+    def apk_download():
+        apk = os.path.join(WEB_DIR, "TruckRoute.apk")
+        if not os.path.isfile(apk):
+            return JSONResponse(status_code=404, content={"detail": "APK not published yet"})
+        return FileResponse(apk, media_type="application/vnd.android.package-archive",
+                            filename="TruckRoute.apk")
