@@ -98,6 +98,44 @@ button { font-family: inherit; }
 #nav-stats span { font-size: 20px; font-weight: 800; display: block; }
 #nav-stats label { font-size: 12px; color: var(--muted); }
 #btn-end-nav { position: absolute; right: 12px; bottom: 108px; width: auto; padding: 14px 22px; pointer-events: auto; }
+.btn-report-nav { position: absolute; left: 12px; bottom: 108px; width: auto; padding: 14px 22px; pointer-events: auto;
+  background: var(--accent); color: #1a1206; border: none; border-radius: var(--radius);
+  font-size: 17px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+#incident-alert { position: absolute; top: calc(118px + env(safe-area-inset-top)); left: 12px; right: 12px;
+  background: #3a2b12; border: 2px solid var(--accent); border-radius: 16px; padding: 14px 16px;
+  font-size: 18px; font-weight: 700; z-index: 7; pointer-events: none; box-shadow: 0 6px 20px rgba(0,0,0,.5); }
+#incident-alert-emoji { font-size: 24px; margin-right: 8px; }
+
+/* ---------- incident reporting ---------- */
+.report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+.report-btn { padding: 16px 8px; font-size: 16px; font-weight: 700; background: var(--bg2); color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; }
+.report-btn:active { transform: scale(0.97); border-color: var(--accent); }
+.report-btn .e { font-size: 30px; display: block; margin-bottom: 6px; }
+.incident-marker { font-size: 26px; line-height: 1; cursor: pointer;
+  filter: drop-shadow(0 2px 5px rgba(0,0,0,.8)); }
+.incident-popup { font-size: 15px; color: #0d1420; }
+.incident-popup .t { font-weight: 800; font-size: 17px; margin-bottom: 2px; }
+.incident-popup .s { color: #5b6b84; font-size: 13px; margin-bottom: 8px; }
+.incident-popup .row { display: flex; gap: 8px; }
+.incident-popup button { flex: 1; padding: 10px; border-radius: 10px; font-size: 14px; font-weight: 700;
+  border: 1px solid #c8d2e0; background: #f1f4f9; cursor: pointer; }
+.incident-popup button.yes { background: #2f9e44; border-color: #2f9e44; color: #fff; }
+.incident-popup button.no { background: #e5484d; border-color: #e5484d; color: #fff; }
+
+/* ---------- multi-stop ---------- */
+#stop-list { margin-bottom: 4px; }
+#btn-add-stop { margin: 0 0 8px; padding: 10px; font-size: 15px; }
+.stop-row { display: flex; align-items: center; gap: 6px; padding: 8px; background: var(--bg2);
+  border: 1px solid var(--line); border-radius: 10px; margin-bottom: 6px; }
+.stop-n { flex: 0 0 26px; height: 26px; border-radius: 50%; background: var(--blue); color: #fff;
+  font-size: 14px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.stop-l { flex: 1; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stop-m { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.stop-row button { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--card); color: var(--text); font-size: 15px; cursor: pointer; }
+.stop-endpoint { display: flex; align-items: center; gap: 8px; padding: 6px 8px; font-size: 13px; color: var(--muted); }
+.stop-endpoint .dot { font-size: 16px; }
 
 /* ---------- modal ---------- */
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 20;

@@ -100,6 +100,7 @@ async function afterLogin(tokens) {
   showScreen("map");
   initMapOnce();
   startGps();
+  startIncidentFeed();
 }
 $("btn-login").onclick = async () => {
   try {
@@ -121,9 +122,11 @@ $("btn-register").onclick = async () => {
 
 const state = {
   user: null, prefs: null, trucks: [], activeTruck: null,
-  dest: null, route: null, routeId: null, selOption: 0,
+  dest: null, stops: [], addingStop: false, // multi-stop waypoints
+  route: null, routeId: null, selOption: 0,
   navigating: false, sessionId: null,
   pos: null, // {lat, lng, speed, bearing}
+  incidents: [], // latest nearby incident feed
 };
 
 /* ================= map ================= */
@@ -248,6 +251,132 @@ function speak(text) {
   } catch (e) {}
 }
 
+/* ================= incident reports (crowdsourced) ================= */
+const INCIDENT_TYPES = [
+  { kind: "police",        emoji: "🚔", label: "Police" },
+  { kind: "accident",      emoji: "💥", label: "Accident" },
+  { kind: "hazard",        emoji: "⚠️", label: "Hazard" },
+  { kind: "closure",       emoji: "⛔", label: "Road closed" },
+  { kind: "construction",  emoji: "🚧", label: "Construction" },
+  { kind: "weigh_open",    emoji: "🟢", label: "Weigh stn open" },
+  { kind: "weigh_closed",  emoji: "🔴", label: "Weigh stn closed" },
+  { kind: "low_clearance", emoji: "↕️", label: "Low clearance" },
+  { kind: "no_parking",    emoji: "🅿️", label: "No truck parking" },
+  { kind: "traffic_jam",   emoji: "🐢", label: "Traffic jam" },
+];
+let incidentMarkers = [];
+let incidentTimer = null;
+
+function buildReportGrid() {
+  const grid = $("report-grid");
+  grid.innerHTML = "";
+  INCIDENT_TYPES.forEach((t) => {
+    const b = document.createElement("button");
+    b.className = "report-btn";
+    b.innerHTML = `<span class="e">${t.emoji}</span><span></span>`;
+    b.querySelector("span:last-child").textContent = t.label;
+    b.onclick = () => reportIncident(t.kind);
+    grid.appendChild(b);
+  });
+}
+$("btn-close-report").onclick = () => ($("modal-report").hidden = true);
+$("btn-report").onclick = () => ($("modal-report").hidden = false);
+$("btn-report-nav").onclick = () => ($("modal-report").hidden = false);
+
+async function reportIncident(kind) {
+  $("modal-report").hidden = true;
+  // Report at GPS fix; fall back to map center so it still works indoors.
+  let lat = null, lng = null;
+  if (state.pos) { lat = state.pos.lat; lng = state.pos.lng; }
+  else if (map) { const c = map.getCenter(); lat = c.lat; lng = c.lng; }
+  if (lat == null) { toast("No location yet — wait for GPS"); return; }
+  try {
+    await api.post("/api/incidents", { kind, lat, lng });
+    const t = INCIDENT_TYPES.find((x) => x.kind === kind);
+    toast(`${t ? t.emoji : "📍"} Reported — thanks, driver`);
+    refreshIncidents();
+  } catch (e) { toast(e.message); }
+}
+
+function incidentPopupHtml(it) {
+  const when = it.age_min < 1 ? "just now" : `${it.age_min} min ago`;
+  return `<div class="incident-popup">
+    <div class="t">${it.emoji} ${escapeHtml(it.label)}</div>
+    <div class="s">${when} · 👍 ${it.confirms} · 👎 ${it.denies}</div>
+    <div class="row">
+      <button class="yes" onclick="incidentVote('${it.id}','confirm')">Still there</button>
+      <button class="no" onclick="incidentVote('${it.id}','deny')">Gone</button>
+    </div></div>`;
+}
+window.incidentVote = async (id, vote) => {
+  try {
+    await api.post(`/api/incidents/${id}/${vote}`);
+    toast(vote === "confirm" ? "Confirmed 👍" : "Marked gone — thanks");
+    refreshIncidents();
+  } catch (e) { toast(e.message); }
+};
+
+async function refreshIncidents() {
+  if (!state.pos || !map || !state.user) return;
+  try {
+    const items = await api.get(
+      `/api/incidents/near?lat=${state.pos.lat}&lng=${state.pos.lng}&radius_m=15000`);
+    state.incidents = items;
+    incidentMarkers.forEach((m) => m.remove());
+    incidentMarkers = [];
+    items.forEach((it) => {
+      const el = document.createElement("div");
+      el.className = "incident-marker";
+      el.textContent = it.emoji;
+      const mk = new maplibregl.Marker({ element: el })
+        .setLngLat([it.lng, it.lat])
+        .setPopup(new maplibregl.Popup({ offset: 20 }).setHTML(incidentPopupHtml(it)))
+        .addTo(map);
+      incidentMarkers.push(mk);
+    });
+  } catch (e) { /* incidents are best-effort; stay silent */ }
+}
+function startIncidentFeed() {
+  if (incidentTimer) return;
+  refreshIncidents();
+  incidentTimer = setInterval(refreshIncidents, 60000);
+}
+
+function bearingTo(aLat, aLng, bLat, bLng) {
+  const t = Math.PI / 180;
+  const dLo = (bLng - aLng) * t;
+  const y = Math.sin(dLo) * Math.cos(bLat * t);
+  const x = Math.cos(aLat * t) * Math.sin(bLat * t) -
+            Math.sin(aLat * t) * Math.cos(bLat * t) * Math.cos(dLo);
+  return ((Math.atan2(y, x) / t) + 360) % 360;
+}
+let incidentBannerTimer = null;
+function showIncidentBanner(it) {
+  $("incident-alert-emoji").textContent = it.emoji;
+  $("incident-alert-text").textContent = `${it.label} ahead`;
+  $("incident-alert").hidden = false;
+  clearTimeout(incidentBannerTimer);
+  incidentBannerTimer = setTimeout(() => ($("incident-alert").hidden = true), 9000);
+}
+function checkIncidentAlerts() {
+  if (!state.incidents.length || !state.pos) return;
+  const { lat, lng, bearing } = state.pos;
+  for (const it of state.incidents) {
+    if (nav.alertedIncidents.has(it.id)) continue;
+    if (haversineM(lat, lng, it.lat, it.lng) > it.alert_m) continue;
+    if (bearing) { // only warn about what's actually ahead of us
+      const brg = bearingTo(lat, lng, it.lat, it.lng);
+      let diff = Math.abs(brg - bearing) % 360;
+      if (diff > 180) diff = 360 - diff;
+      if (diff > 100) continue;
+    }
+    nav.alertedIncidents.add(it.id);
+    speak(it.voice_text);
+    showIncidentBanner(it);
+    break; // one alert per position update
+  }
+}
+
 /* ================= search ================= */
 let suggestTimer = null;
 $("search-dest").addEventListener("input", (e) => {
@@ -285,12 +414,83 @@ async function runSuggest(q) {
 }
 function selectDestination(it) {
   $("suggest-list").hidden = true;
+  if (state.addingStop) {
+    // multi-stop mode: append as a waypoint, keep the destination
+    state.addingStop = false;
+    $("search-dest").value = "";
+    $("search-dest").placeholder = "Where to?";
+    $("btn-clear-search").hidden = true;
+    state.stops.push({ lat: it.lat, lng: it.lng, label: it.label });
+    drawStopMarkers();
+    calculateRoute();
+    return;
+  }
   $("search-dest").value = it.label;
   state.dest = { lat: it.lat, lng: it.lng, label: it.label };
   if (destMarker) destMarker.remove();
   destMarker = new maplibregl.Marker({ color: "#f5a623" })
     .setLngLat([it.lng, it.lat]).addTo(map);
   calculateRoute();
+}
+$("btn-add-stop").onclick = () => {
+  if (!state.dest) { toast("Pick a destination first"); return; }
+  if (state.stops.length >= 10) { toast("Maximum 10 stops"); return; }
+  state.addingStop = true;
+  $("search-dest").placeholder = "Search for a stop…";
+  $("search-dest").focus();
+  toast("Search an address to add it as a stop");
+};
+function stopAction(i, act) {
+  if (act === "rm") state.stops.splice(i, 1);
+  else if (act === "up" && i > 0) [state.stops[i - 1], state.stops[i]] = [state.stops[i], state.stops[i - 1]];
+  else if (act === "dn" && i < state.stops.length - 1) [state.stops[i + 1], state.stops[i]] = [state.stops[i], state.stops[i + 1]];
+  else return;
+  drawStopMarkers();
+  calculateRoute();
+}
+let stopMarkers = [];
+function drawStopMarkers() {
+  stopMarkers.forEach((m) => m.remove());
+  stopMarkers = [];
+  if (!map) return;
+  state.stops.forEach((s, i) => {
+    const el = document.createElement("div");
+    el.className = "stop-n";
+    el.textContent = i + 1;
+    stopMarkers.push(new maplibregl.Marker({ element: el })
+      .setLngLat([s.lng, s.lat]).addTo(map));
+  });
+}
+function renderStops() {
+  const box = $("stop-list");
+  box.innerHTML = "";
+  if (!state.stops.length && !state.dest) return;
+  const o = state.route && state.route.options[state.selOption];
+  const legs = (o && o.legs) || [];
+  const legText = (i) => legs[i]
+    ? `${legs[i].distance_miles} mi · ${fmtDur(legs[i].duration_min)}` : "";
+  const org = document.createElement("div");
+  org.className = "stop-endpoint";
+  org.innerHTML = `<span class="dot">🟢</span><span></span>`;
+  org.querySelector("span:nth-child(2)").textContent = "Current location";
+  box.appendChild(org);
+  state.stops.forEach((s, i) => {
+    const d = document.createElement("div");
+    d.className = "stop-row";
+    d.innerHTML = `<span class="stop-n">${i + 1}</span><span class="stop-l"></span>
+      <span class="stop-m">${legText(i)}</span>
+      <button data-a="up" title="Move up">↑</button><button data-a="dn" title="Move down">↓</button><button data-a="rm" title="Remove">✕</button>`;
+    d.querySelector(".stop-l").textContent = s.label;
+    d.querySelectorAll("button").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); stopAction(i, b.dataset.a); }));
+    box.appendChild(d);
+  });
+  if (state.dest) {
+    const d = document.createElement("div");
+    d.className = "stop-endpoint";
+    d.innerHTML = `<span class="dot">🏁</span><span></span><span class="stop-m">${legText(state.stops.length)}</span>`;
+    d.querySelector("span:nth-child(2)").textContent = state.dest.label;
+    box.appendChild(d);
+  }
 }
 $("btn-parking").onclick = async () => {
   if (!state.pos) { toast("Need a GPS fix first"); return; }
@@ -319,6 +519,7 @@ async function calculateRoute() {
     const body = {
       origin: { lat: state.pos.lat, lng: state.pos.lng, label: "Current location" },
       destination: { lat: state.dest.lat, lng: state.dest.lng, label: state.dest.label },
+      waypoints: state.stops.map((s) => ({ lat: s.lat, lng: s.lng, label: s.label })),
       truck_id: state.activeTruck ? state.activeTruck.id : null,
       alternatives: true, save_trip: false,
     };
@@ -341,6 +542,7 @@ function renderRouteOptions() {
     d.onclick = () => { state.selOption = i; renderRouteOptions(); drawRoute(o.shape); };
     box.appendChild(d);
   });
+  renderStops();
 }
 function drawRoute(shape) {
   if (!map || !map.getSource("route")) return;
@@ -354,7 +556,9 @@ function fitRoute(shape) {
   map.fitBounds(b, { padding: 60 });
 }
 function clearRoute() {
-  state.route = null; state.dest = null;
+  state.route = null; state.dest = null; state.stops = []; state.addingStop = false;
+  $("search-dest").placeholder = "Where to?";
+  stopMarkers.forEach((m) => m.remove()); stopMarkers = [];
   if (map && map.getSource("route"))
     map.getSource("route").setData({ type: "FeatureCollection", features: [] });
   if (map && map.getSource("route-done"))
@@ -375,6 +579,7 @@ $("btn-trip-summary").onclick = async () => {
     const body = {
       origin: { lat: state.pos.lat, lng: state.pos.lng, label: "Current location" },
       destination: { lat: state.dest.lat, lng: state.dest.lng, label: state.dest.label },
+      waypoints: state.stops.map((s) => ({ lat: s.lat, lng: s.lng, label: s.label })),
       truck_id: state.activeTruck ? state.activeTruck.id : null,
       alternatives: true, save_trip: true,
       trip_name: state.dest.label,
@@ -423,13 +628,16 @@ function openSummary() {
 $("btn-close-summary").onclick = () => ($("modal-summary").hidden = true);
 
 /* ================= turn-by-turn navigation ================= */
-const nav = { maneuvers: [], coords: [], idx: 0, announced: {}, offCount: 0, lastFix: 0, startTime: 0 };
+const nav = { maneuvers: [], coords: [], idx: 0, announced: {}, offCount: 0,
+  lastFix: 0, startTime: 0,
+  alertedIncidents: new Set(), lastIncidentRefresh: 0, wpHit: new Set() };
 
 $("btn-start-nav").onclick = async () => {
   const o = state.route.options[state.selOption];
   $("modal-summary").hidden = true;
   nav.maneuvers = o.maneuvers; nav.coords = o.shape.coordinates;
   nav.idx = 0; nav.announced = {}; nav.offCount = 0;
+  nav.alertedIncidents = new Set(); nav.wpHit = new Set(); nav.lastIncidentRefresh = Date.now();
   state.navigating = true;
   if (NATIVE) { try { window.TruckRoute.startNavService(); } catch (e) {} }
   try {
@@ -492,6 +700,19 @@ async function navUpdate() {
   const { lat, lng } = state.pos;
   const near = nearestOnRoute(lat, lng);
 
+  // waypoint arrival check (multi-stop)
+  state.stops.forEach((s, i) => {
+    if (nav.wpHit.has(i)) return;
+    if (haversineM(lat, lng, s.lat, s.lng) < 150) {
+      nav.wpHit.add(i);
+      const done = nav.wpHit.size, total = state.stops.length;
+      speak(done < total
+        ? `Arrived at stop ${i + 1} of ${total}.`
+        : `Arrived at stop ${i + 1} of ${total}. Continuing to your destination.`);
+      toast(`✓ Stop ${i + 1} of ${total}`);
+    }
+  });
+
   // arrival check
   const last = nav.coords[nav.coords.length - 1];
   if (haversineM(lat, lng, last[1], last[0]) < 60) {
@@ -544,6 +765,8 @@ async function navUpdate() {
   $("nav-dist").textContent = dTo < 1609 ? `${Math.round(dTo * 3.281)} ft` : `${(dTo / 1609.344).toFixed(1)} mi`;
   const remMi = remainingMiles(near.idx);
   $("nav-remain").textContent = remMi.toFixed(0);
+  const mph = (state.pos.speed || 0) * 2.23694;
+  $("nav-speed").textContent = state.pos.speed != null ? Math.round(mph) : "—";
   const elapsedMin = (Date.now() - nav.startTime) / 60000;
   const o0 = state.route.options[state.selOption];
   const leftMin = Math.max(0, o0.duration_min - elapsedMin);
@@ -559,6 +782,13 @@ async function navUpdate() {
   }
   // follow mode
   if (map && !map._userMoved) map.setCenter([lng, lat]);
+
+  // incident feed refresh + proximity voice alerts
+  if (now - nav.lastIncidentRefresh > 60000) {
+    nav.lastIncidentRefresh = now;
+    refreshIncidents();
+  }
+  checkIncidentAlerts();
 }
 if (typeof maplibregl !== "undefined") {
   // track manual pans so follow mode doesn't fight the driver
@@ -808,6 +1038,7 @@ function escapeHtml(s) {
 
 /* ================= boot ================= */
 (async function boot() {
+  buildReportGrid();
   if (api.access) {
     try {
       state.user = await api.get("/api/auth/me");
@@ -816,6 +1047,7 @@ function escapeHtml(s) {
       showScreen("map");
       initMapOnce();
       startGps();
+      startIncidentFeed();
       return;
     } catch (e) { api.clear(); }
   }

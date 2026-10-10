@@ -90,6 +90,13 @@ def calculate_route(
                 duration_min=round(mins, 1),
                 est_fuel_gal=fuel_for_trip(miles, mpg),
                 shape=opt.shape,
+                legs=[
+                    schemas.LegOut(
+                        distance_miles=round(leg.get("distance_m", 0) * MILES_PER_METER, 1),
+                        duration_min=round(leg.get("duration_s", 0) / 60.0, 1),
+                    )
+                    for leg in opt.legs
+                ],
                 maneuvers=[
                     schemas.ManeuverOut(
                         index=m.index, lat=m.lat, lng=m.lng,

@@ -42,6 +42,7 @@ class RouteOption:
     duration_s: float
     shape: dict  # GeoJSON LineString {"type": "LineString", "coordinates": [[lng,lat],...]}
     maneuvers: list[Maneuver] = field(default_factory=list)
+    legs: list[dict] = field(default_factory=list)  # per-leg [{"distance_m":..,"duration_s":..}] incl. waypoints
 
 
 @dataclass

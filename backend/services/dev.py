@@ -177,7 +177,10 @@ class OsrmRouter(RoutingService):
         options = []
         for i, rt in enumerate(data["routes"][:3]):
             maneuvers = []
+            legs = []
             for leg in rt.get("legs", []):
+                legs.append({"distance_m": leg.get("distance", 0),
+                             "duration_s": leg.get("duration", 0)})
                 for step in leg.get("steps", []):
                     man = step.get("maneuver", {})
                     loc = man.get("location", [0, 0])
@@ -198,6 +201,7 @@ class OsrmRouter(RoutingService):
                     duration_s=rt.get("duration", 0),
                     shape=rt.get("geometry", {"type": "LineString", "coordinates": []}),
                     maneuvers=maneuvers,
+                    legs=legs,
                 )
             )
         warnings = [

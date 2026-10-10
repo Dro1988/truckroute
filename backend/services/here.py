@@ -127,6 +127,7 @@ class HereRouter(RoutingService):
         for ri, rt in enumerate(routes[:3]):
             coords: list[list[float]] = []
             maneuvers: list[Maneuver] = []
+            legs: list[dict] = []
             total_len = 0.0
             total_dur = 0.0
             for section in rt.get("sections", []):
@@ -135,9 +136,11 @@ class HereRouter(RoutingService):
                     pts = fp.decode(poly)  # [(lat, lng), ...]
                 except Exception:
                     continue
+                ssum = section.get("summary", {})
+                legs.append({"distance_m": ssum.get("length", 0),
+                             "duration_s": ssum.get("duration", 0)})
                 base_idx = len(coords)
                 coords.extend([[p[1], p[0]] for p in pts])  # GeoJSON = [lng, lat]
-                ssum = section.get("summary", {})
                 total_len += ssum.get("length", 0)
                 total_dur += ssum.get("duration", 0)
                 for a in section.get("actions", []):
@@ -169,6 +172,7 @@ class HereRouter(RoutingService):
                     duration_s=total_dur,
                     shape={"type": "LineString", "coordinates": coords},
                     maneuvers=maneuvers,
+                    legs=legs,
                 )
             )
         if not options:

@@ -143,6 +143,12 @@ class RouteOptionOut(BaseModel):
     est_fuel_gal: Optional[float] = None
     shape: dict  # GeoJSON LineString
     maneuvers: list[ManeuverOut]
+    legs: list["LegOut"] = Field(default_factory=list)  # per-leg incl. waypoints
+
+
+class LegOut(BaseModel):
+    distance_miles: float
+    duration_min: float
 
 
 class CalculateRouteOut(BaseModel):
@@ -262,3 +268,27 @@ class UsageSummaryOut(BaseModel):
     by_provider: list[dict[str, Any]]
     by_operation: list[dict[str, Any]]
     avg_calls_per_user: float
+
+
+# ---- incident reports (crowdsourced) ----
+class IncidentReportIn(BaseModel):
+    kind: str = Field(min_length=2, max_length=30)
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    note: str = Field(default="", max_length=200)
+
+
+class IncidentOut(BaseModel):
+    id: str
+    kind: str
+    label: str
+    emoji: str
+    lat: float
+    lng: float
+    confirms: int
+    denies: int
+    created_at: datetime
+    expires_at: datetime
+    age_min: int
+    alert_m: int
+    voice_text: str

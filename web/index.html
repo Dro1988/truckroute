@@ -49,9 +49,12 @@
       <button id="btn-recenter" class="icon-btn" title="Recenter">◎</button>
       <button id="btn-style" class="icon-btn" title="Map style">🗺</button>
       <button id="btn-parking" class="icon-btn" title="Find truck parking">🅿</button>
+      <button id="btn-report" class="icon-btn" title="Report incident">⚠️</button>
     </div>
     <div id="gps-banner" hidden>Waiting for GPS…</div>
     <div id="route-panel" hidden>
+      <div id="stop-list"></div>
+      <button id="btn-add-stop" class="btn-ghost btn-sm">＋ Add stop</button>
       <div id="route-options"></div>
       <button id="btn-trip-summary" class="btn-primary">Review trip</button>
       <button id="btn-cancel-route" class="btn-ghost">Clear</button>
@@ -62,14 +65,27 @@
         <div id="nav-instruction">—</div>
         <div id="nav-dist">—</div>
       </div>
+      <div id="incident-alert" hidden><span id="incident-alert-emoji"></span> <span id="incident-alert-text"></span></div>
       <div id="nav-stats">
         <div><span id="nav-eta">—</span><label>ETA</label></div>
         <div><span id="nav-remain">—</span><label>miles left</label></div>
         <div><span id="nav-time">—</span><label>drive time</label></div>
+        <div><span id="nav-speed">—</span><label>mph</label></div>
       </div>
+      <button id="btn-report-nav" class="btn-report-nav">⚠️ Report</button>
       <button id="btn-end-nav" class="btn-danger">End</button>
     </div>
   </section>
+
+  <!-- ===== Report incident modal ===== -->
+  <div id="modal-report" class="modal" hidden>
+    <div class="modal-card">
+      <h2>Report ahead</h2>
+      <p class="fineprint" style="margin-top:0">One tap — shared with drivers near you.</p>
+      <div id="report-grid" class="report-grid"></div>
+      <button id="btn-close-report" class="btn-ghost">Cancel</button>
+    </div>
+  </div>
 
   <!-- ===== Trip summary modal ===== -->
   <div id="modal-summary" class="modal" hidden>

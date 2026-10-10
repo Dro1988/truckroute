@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 import models
 from config import get_settings
 from database import SessionLocal, engine
-from routers import admin, auth, nav, routes, saved, search, subscription, trips
+from routers import admin, auth, incidents, nav, routes, saved, search, subscription, trips
 from routers.trucks import pref_router, router as trucks_router
 
 settings = get_settings()
@@ -41,6 +41,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(trucks_router)
 app.include_router(pref_router)
+app.include_router(incidents.router)
 app.include_router(search.router)
 app.include_router(routes.router)
 app.include_router(trips.router)

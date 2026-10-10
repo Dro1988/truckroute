@@ -231,3 +231,28 @@ class SystemError(Base):
     where: Mapped[str] = mapped_column(String(120))
     message: Mapped[str] = mapped_column(String(2000))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+
+
+class IncidentReport(Base):
+    """Crowdsourced road incidents (Waze-style), with truck-specific types."""
+    __tablename__ = "incident_reports"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(30), index=True)  # police, accident, ...
+    lat: Mapped[float] = mapped_column(Float, index=True)
+    lng: Mapped[float] = mapped_column(Float)
+    note: Mapped[str] = mapped_column(String(200), default="")
+    confirms: Mapped[int] = mapped_column(Integer, default=1)  # reporter counts as one
+    denies: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
+class IncidentVote(Base):
+    __tablename__ = "incident_votes"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    incident_id: Mapped[str] = mapped_column(String(32), ForeignKey("incident_reports.id"), index=True)
+    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), index=True)
+    vote: Mapped[str] = mapped_column(String(10))  # "confirm" | "deny"
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
