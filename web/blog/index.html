@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TruckRoute Blog — Truck navigation news, tips, and guides</title>
+<meta name="description" content="The TruckRoute blog: practical guides for truckers on truck-safe navigation, low clearances, weigh stations, and why car GPS doesn't cut it in a rig.">
+<meta property="og:title" content="TruckRoute Blog">
+<meta property="og:description" content="Practical guides for truckers on truck-safe navigation, low clearances, weigh stations, and why car GPS doesn't cut it in a rig.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://truckroute-api.onrender.com/blog/">
+<link rel="stylesheet" href="/assets/styles.css">
+<style>
+  body { display: block; }
+  .blog-wrap { max-width: 760px; margin: 0 auto; padding: 32px 20px 64px; }
+  .blog-header { text-align: center; margin-bottom: 32px; }
+  .blog-header .brand { justify-content: center; }
+  .post-cards { display: flex; flex-direction: column; gap: 16px; }
+  .post-card { display: block; text-decoration: none; color: var(--text); }
+  .post-card:hover { border-color: var(--accent); }
+  .post-card .date { color: var(--muted); font-size: 13px; }
+  .post-card h2 { margin: 6px 0 8px; font-size: 22px; }
+  .post-card p { color: var(--muted); margin: 0; font-size: 15px; line-height: 1.6; }
+  .post-card .read-more { color: var(--accent); font-weight: 700; font-size: 15px; margin-top: 10px; display: inline-block; }
+  .signup { text-align: center; margin-top: 40px; }
+  .signup form { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; justify-content: center; }
+  .signup input { max-width: 240px; }
+  .signup button { width: auto; padding: 14px 24px; margin: 6px 0; }
+  .signup .thanks { color: var(--accent2); font-weight: 700; }
+  .back-nav { text-align: center; margin-top: 24px; }
+  .back-nav a { color: var(--accent); }
+</style>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"Blog","name":"TruckRoute Blog","url":"https://truckroute-api.onrender.com/blog/"}
+</script>
+</head>
+<body>
+<div class="blog-wrap">
+  <header class="blog-header">
+    <div class="brand"><span class="brand-mark">🚚</span><h1>TruckRoute Blog</h1></div>
+    <p class="tagline">Truck navigation news, tips, and guides — written for drivers, by drivers.</p>
+  </header>
+
+  <div class="post-cards">
+    <a class="card post-card" href="/blog/car-gps-rig-trouble">
+      <div class="date">October 12, 2026</div>
+      <h2>Why Your Car GPS Will Get Your Rig in Trouble</h2>
+      <p>Car GPS doesn't know your height, weight, or hazmat load. Here's how regular navigation puts truckers in real danger — and what truck-specific routing does differently.</p>
+      <span class="read-more">Read the post →</span>
+    </a>
+    <a class="card post-card" href="/blog/why-no-truck-mode">
+      <div class="date">October 12, 2026</div>
+      <h2>Why Google Maps Still Doesn't Have Truck Mode (and What Truckers Actually Use)</h2>
+      <p>Google Maps has no truck mode for consumers — no height clearances, no weight limits, no truck parking. Here's what truckers use today, and the affordable middle ground that's been missing.</p>
+      <span class="read-more">Read the post →</span>
+    </a>
+  </div>
+
+  <div class="card signup">
+    <h2>Get TruckRoute updates</h2>
+    <p class="fineprint" style="margin-top:0">New posts and app updates, straight to your inbox. No spam.</p>
+    <form id="blog-signup">
+      <input id="su-name" type="text" placeholder="Your name" autocomplete="name">
+      <input id="su-email" type="email" placeholder="Email address" autocomplete="email" required>
+      <button type="submit" class="btn-primary">Sign up</button>
+    </form>
+    <p id="su-thanks" class="thanks" hidden>Thanks — you're on the list! Watch your inbox.</p>
+  </div>
+
+  <div class="back-nav"><a href="/">← Back to TruckRoute</a></div>
+</div>
+<script>
+document.getElementById("blog-signup").addEventListener("submit", function (e) {
+  e.preventDefault();
+  var name = document.getElementById("su-name").value.trim();
+  var email = document.getElementById("su-email").value.trim();
+  if (!email) return;
+  fetch("https://formsubmit.co/ajax/dandrsalesllc@gmail.com", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify({ name: name, email: email, _subject: "TruckRoute blog signup" })
+  }).then(function (r) {
+    if (r.ok) {
+      document.getElementById("blog-signup").hidden = true;
+      document.getElementById("su-thanks").hidden = false;
+    }
+  }).catch(function () {});
+});
+</script>
+</body>
+</html>

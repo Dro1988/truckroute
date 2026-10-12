@@ -85,6 +85,19 @@ if os.path.isdir(WEB_DIR):
     def install_page():
         return FileResponse(os.path.join(WEB_DIR, "install.html"))
 
+    @app.get("/blog", include_in_schema=False)
+    @app.get("/blog/", include_in_schema=False)
+    def blog_index():
+        return FileResponse(os.path.join(WEB_DIR, "blog", "index.html"))
+
+    @app.get("/blog/{slug}", include_in_schema=False)
+    def blog_post(slug: str):
+        allowed = {"car-gps-rig-trouble": "car-gps-rig-trouble.html",
+                   "why-no-truck-mode": "why-no-truck-mode.html"}
+        if slug not in allowed:
+            return JSONResponse(status_code=404, content={"detail": "Post not found"})
+        return FileResponse(os.path.join(WEB_DIR, "blog", allowed[slug]))
+
     @app.get("/TruckRoute.apk", include_in_schema=False)
     def apk_download():
         apk = os.path.join(WEB_DIR, "TruckRoute.apk")

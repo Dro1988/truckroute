@@ -3,7 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>TruckRoute</title>
+<title>TruckRoute — Truck-smart navigation</title>
+<meta name="description" content="TruckRoute: truck-smart navigation with truck profiles, multi-stop routing, turn-by-turn voice, live speed, weigh-station and incident reports. Free to start.">
+<meta property="og:title" content="TruckRoute — Truck-smart navigation">
+<meta property="og:description" content="Truck-smart navigation for a fraction of the price: routing, multi-stop trips, turn-by-turn, weigh-station reports, and truck parking.">
+<meta property="og:type" content="website">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.0.0/dist/maplibre-gl.css">
 <link rel="stylesheet" href="styles.css">
 <script src="https://unpkg.com/maplibre-gl@5.0.0/dist/maplibre-gl.js"></script>
@@ -13,7 +17,7 @@
 <div id="app">
 
   <!-- ===== Auth screen ===== -->
-  <section id="screen-auth" class="screen">
+  <section id="screen-auth" class="screen" style="flex-direction:column;align-items:center;justify-content:center">
     <div class="auth-card">
       <div class="brand"><span class="brand-mark">🚚</span><h1>TruckRoute</h1></div>
       <p class="tagline">Truck-smart navigation for a fraction of the price.</p>
@@ -35,7 +39,36 @@
       <p id="auth-error" class="error"></p>
       <p class="fineprint">No signup walls inside — one account works on phone and web.</p>
     </div>
+    <div class="form-card" id="updates-card" style="width:100%;max-width:400px;margin-top:16px">
+      <h3>Get TruckRoute updates</h3>
+      <p class="fineprint" style="margin-top:0">New posts and app updates. No spam.</p>
+      <form id="updates-form">
+        <input id="up-name" type="text" placeholder="Your name" autocomplete="name">
+        <input id="up-email" type="email" placeholder="Email address" autocomplete="email" required>
+        <button type="submit" class="btn-primary">Sign up</button>
+      </form>
+      <p id="up-thanks" class="fineprint" style="color:var(--accent2);font-weight:700" hidden>Thanks — you're on the list! Watch your inbox.</p>
+    </div>
   </section>
+<script>
+(function () {
+  var f = document.getElementById("updates-form");
+  if (!f) return;
+  f.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var email = document.getElementById("up-email").value.trim();
+    if (!email) return;
+    var name = document.getElementById("up-name").value.trim();
+    fetch("https://formsubmit.co/ajax/dandrsalesllc@gmail.com", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({ name: name, email: email, _subject: "TruckRoute blog signup" })
+    }).then(function (r) {
+      if (r.ok) { f.hidden = true; document.getElementById("up-thanks").hidden = false; }
+    }).catch(function () {});
+  });
+})();
+</script>
 
   <!-- ===== Map screen ===== -->
   <section id="screen-map" class="screen" hidden>
