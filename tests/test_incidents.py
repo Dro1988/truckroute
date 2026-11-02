@@ -182,3 +182,61 @@ def test_calculate_returns_legs(client, monkeypatch):
     assert len(opt["legs"]) == 2
     total_leg_miles = sum(leg["distance_miles"] for leg in opt["legs"])
     assert abs(total_leg_miles - opt["distance_miles"]) < 0.2
+
+
+# ---------- v3: incidents along a route corridor ----------
+
+def _route_points():
+    # Straight eastbound line near Homerville, GA: lng -82.80 -> -82.60
+    # at lat 31.03. GeoJSON order [lng, lat]. ~0.2 deg lng ~ 19 km ~ 11.8 mi.
+    return [[-82.80 + 0.02 * i, 31.03] for i in range(11)]
+
+
+def test_along_route_finds_corridor_incidents(client, db):
+    h = _mk(client, "along1@examplemail.com")
+    # A traffic jam ON the line, about halfway (~5.9 mi along).
+    r = client.post("/api/incidents", headers=h,
+                    json={"kind": "traffic_jam", "lat": 31.0305, "lng": -82.70})
+    assert r.status_code == 200, r.text
+    jam_id = r.json()["id"]
+
+    r = client.post("/api/incidents/along", headers=h,
+                    json={"points": _route_points(), "corridor_m": 600})
+    assert r.status_code == 200, r.text
+    items = r.json()
+    assert len(items) == 1
+    it = items[0]
+    assert it["id"] == jam_id
+    assert it["slows_traffic"] is True
+    assert 4.0 < it["miles_along"] < 8.0  # roughly halfway along ~11.8 mi
+
+
+def test_along_route_excludes_off_corridor_and_marks_police_non_slowing(client, db):
+    # Own latitude line (32.03): the test DB is session-shared, so corridors
+    # must not overlap other tests' reports.
+    pts = [[-82.80 + 0.02 * i, 32.03] for i in range(11)]
+    h = _mk(client, "along2@examplemail.com")
+    # Police ON the route (not a slowing kind)...
+    r = client.post("/api/incidents", headers=h,
+                    json={"kind": "police", "lat": 32.03, "lng": -82.65})
+    assert r.status_code == 200, r.text
+    # ...and an accident ~3 km north of the line (outside a 600 m corridor).
+    h2 = _mk(client, "along2b@examplemail.com")
+    r = client.post("/api/incidents", headers=h2,
+                    json={"kind": "accident", "lat": 32.06, "lng": -82.70})
+    assert r.status_code == 200, r.text
+
+    r = client.post("/api/incidents/along", headers=h,
+                    json={"points": pts, "corridor_m": 600})
+    assert r.status_code == 200, r.text
+    items = r.json()
+    assert len(items) == 1
+    assert items[0]["kind"] == "police"
+    assert items[0]["slows_traffic"] is False
+
+
+def test_along_route_requires_two_points(client):
+    h = _mk(client, "along3@examplemail.com")
+    r = client.post("/api/incidents/along", headers=h,
+                    json={"points": [[-82.8, 31.03]], "corridor_m": 600})
+    assert r.status_code == 422  # schema min_length=2

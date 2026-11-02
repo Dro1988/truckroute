@@ -28,7 +28,7 @@ for _attempt in range(12):
             raise
         time.sleep(5)
 
-app = FastAPI(title=f"{settings.APP_NAME} API", version="0.1.0-mvp")
+app = FastAPI(title=f"{settings.APP_NAME} API", version="3.0.0-mvp")
 
 app.add_middleware(
     CORSMiddleware,
@@ -67,7 +67,7 @@ async def _unhandled(request: Request, exc: Exception):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "app": settings.APP_NAME, "version": "0.1.0-mvp"}
+    return {"ok": True, "app": settings.APP_NAME, "version": "3.0.0-mvp"}
 
 
 # ---- serve the web dashboard (same backend, same accounts) ----

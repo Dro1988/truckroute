@@ -76,6 +76,7 @@
   <section id="screen-map" class="screen" hidden>
     <div id="map"></div>
     <div id="search-bar">
+      <span id="search-icon" aria-hidden="true">🔍</span>
       <input id="search-dest" type="text" placeholder="Where to?" autocomplete="off" aria-label="Destination search">
       <button id="btn-clear-search" class="icon-btn" hidden>✕</button>
       <div id="suggest-list" hidden></div>
@@ -88,9 +89,17 @@
     </div>
     <div id="gps-banner" hidden>Waiting for GPS…</div>
     <div id="route-panel" hidden>
+      <div class="sheet-handle"></div>
+      <div id="sheet-summary">
+        <div id="sheet-big">—</div>
+        <div id="sheet-sub">—</div>
+        <div id="sheet-slow-chip" class="slow-chip" hidden></div>
+      </div>
+      <div id="route-options"></div>
       <div id="stop-list"></div>
       <button id="btn-add-stop" class="btn-ghost btn-sm">＋ Add stop</button>
-      <div id="route-options"></div>
+      <div id="sheet-ahead" class="sheet-section" hidden></div>
+      <div id="sheet-rests" class="sheet-section" hidden></div>
       <button id="btn-trip-summary" class="btn-primary">Review trip</button>
       <button id="btn-cancel-route" class="btn-ghost">Clear</button>
     </div>
@@ -99,16 +108,22 @@
       <div id="nav-next">
         <div id="nav-instruction">—</div>
         <div id="nav-dist">—</div>
+        <div id="nav-break" hidden></div>
       </div>
       <div id="incident-alert" hidden><span id="incident-alert-emoji"></span> <span id="incident-alert-text"></span></div>
-      <div id="nav-stats">
-        <div><span id="nav-eta">—</span><label>ETA</label></div>
-        <div><span id="nav-remain">—</span><label>miles left</label></div>
-        <div><span id="nav-time">—</span><label>drive time</label></div>
-        <div><span id="nav-speed">—</span><label>mph</label></div>
+      <div id="nav-bottom">
+        <div id="nav-actions">
+          <button id="btn-report-nav" class="btn-report-nav">⚠️ Report</button>
+          <div id="nav-speed-bubble"><span id="nav-speed-big">0</span><label>mph</label></div>
+          <button id="btn-end-nav" class="btn-danger">End</button>
+        </div>
+        <div id="nav-stats">
+          <div><span id="nav-eta">—</span><label>ETA</label></div>
+          <div><span id="nav-remain">—</span><label>miles left</label></div>
+          <div><span id="nav-time">—</span><label>drive time</label></div>
+          <div><span id="nav-speed">—</span><label>mph</label></div>
+        </div>
       </div>
-      <button id="btn-report-nav" class="btn-report-nav">⚠️ Report</button>
-      <button id="btn-end-nav" class="btn-danger">End</button>
     </div>
   </section>
 

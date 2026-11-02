@@ -105,7 +105,10 @@ with zipfile.ZipFile(build + "/app.apk") as z:
 assert any(n == "classes.dex" for n in names), "classes.dex missing from APK"
 EOF
 "$BT/zipalign" -f -p 4 "$BUILD/app.apk" "$BUILD/app-aligned.apk"
-KS=/home/hatch/workspace/.tools/truckroute-build/debug.keystore
+# Keystore lives OUTSIDE $BUILD (the script wipes $BUILD): reusing the same
+# key keeps new APKs installable as updates over previous installs.
+KS=/home/hatch/workspace/.tools/truckroute-keystore/debug.keystore
+mkdir -p "$(dirname "$KS")"
 if [ ! -f "$KS" ]; then
   keytool -genkeypair -keystore "$KS" -alias truckroute \
     -keyalg RSA -keysize 2048 -validity 10950 \

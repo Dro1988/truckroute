@@ -292,3 +292,14 @@ class IncidentOut(BaseModel):
     age_min: int
     alert_m: int
     voice_text: str
+
+
+class AlongRouteIn(BaseModel):
+    # GeoJSON-ordered polyline points: [lng, lat] pairs, downsampled by client.
+    points: list[list[float]] = Field(min_length=2, max_length=500)
+    corridor_m: float = Field(default=600, gt=0, le=2000)
+
+
+class IncidentAlongOut(IncidentOut):
+    miles_along: float          # approx. distance from route start to the report
+    slows_traffic: bool         # kind typically slows traffic (jam/accident/...)

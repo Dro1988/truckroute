@@ -45,6 +45,10 @@ INCIDENT_TYPES: dict[str, dict] = {
                       "voice": "Traffic jam reported ahead"},
 }
 
+# Kinds that typically slow traffic down — used to annotate routes with
+# driver-reported slowdowns (this is crowdsourced data, NOT live traffic).
+SLOW_KINDS = {"traffic_jam", "accident", "closure", "construction", "hazard"}
+
 REPORT_COOLDOWN_S = 60      # one report per user per minute (Waze does the same)
 DEDUPE_RADIUS_M = 250       # same kind this close + recent = confirm it instead
 DEDUPE_WINDOW_MIN = 15
@@ -173,6 +177,89 @@ def incidents_near(
            if _haversine_m(lat, lng, r.lat, r.lng) <= radius_m]
     log_usage(db, "community", "incident_query", user.id,
               meta={"count": len(out), "radius_m": radius_m})
+    return out[:100]
+
+
+def _seg_closest(px: float, py: float, ax: float, ay: float,
+                 bx: float, by: float) -> tuple[float, float]:
+    """Closest point on segment AB to P, in planar meters.
+
+    Returns (distance_m, fraction_along_segment 0..1)."""
+    dx, dy = bx - ax, by - ay
+    seg_len2 = dx * dx + dy * dy
+    if seg_len2 == 0:
+        return math.hypot(px - ax, py - ay), 0.0
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / seg_len2))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy)), t
+
+
+@router.post("/along", response_model=list[schemas.IncidentAlongOut])
+def incidents_along_route(
+    request: Request,
+    body: schemas.AlongRouteIn,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Active driver reports that fall within a corridor around a route.
+
+    Points arrive GeoJSON-ordered [lng, lat]. Each match carries
+    `miles_along` — the approximate distance from the route's start to the
+    report — so clients can say "12 mi ahead" and highlight slowdowns.
+    Source is the app's own crowdsourced reports, never a traffic feed.
+    """
+    rate_limit(request, "incident", 30)
+    _sweep_expired(db)
+
+    pts = [(float(p[1]), float(p[0])) for p in body.points if len(p) == 2]
+    if len(pts) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 route points.")
+
+    # Cumulative meters along the polyline (haversine per segment).
+    cum = [0.0]
+    for i in range(1, len(pts)):
+        cum.append(cum[-1] + _haversine_m(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]))
+
+    # Bounding box of the whole route, expanded by the corridor.
+    lats = [p[0] for p in pts]
+    lngs = [p[1] for p in pts]
+    mid_lat = (min(lats) + max(lats)) / 2.0
+    d_lat = body.corridor_m / 111320.0
+    d_lng = body.corridor_m / (111320.0 * max(0.2, math.cos(math.radians(mid_lat))))
+    candidates = (
+        db.query(models.IncidentReport)
+        .filter(
+            models.IncidentReport.active.is_(True),
+            models.IncidentReport.lat.between(min(lats) - d_lat, max(lats) + d_lat),
+            models.IncidentReport.lng.between(min(lngs) - d_lng, max(lngs) + d_lng),
+        )
+        .order_by(models.IncidentReport.created_at.desc())
+        .limit(500)
+        .all()
+    )
+
+    # Local planar projection (meters) around the route's mid-latitude.
+    kx = 111320.0 * max(0.2, math.cos(math.radians(mid_lat)))
+    proj = [(lng * kx, lat * 110540.0) for lat, lng in pts]
+
+    out: list[schemas.IncidentAlongOut] = []
+    for row in candidates:
+        px, py = row.lng * kx, row.lat * 110540.0
+        best_d, best_along = math.inf, 0.0
+        for i in range(len(proj) - 1):
+            d, t = _seg_closest(px, py, proj[i][0], proj[i][1], proj[i + 1][0], proj[i + 1][1])
+            if d < best_d:
+                best_d = d
+                best_along = cum[i] + t * (cum[i + 1] - cum[i])
+        if best_d <= body.corridor_m:
+            base = _to_out(row)
+            out.append(schemas.IncidentAlongOut(
+                **base.model_dump(),
+                miles_along=round(best_along / 1609.344, 1),
+                slows_traffic=row.kind in SLOW_KINDS,
+            ))
+    out.sort(key=lambda x: x.miles_along)
+    log_usage(db, "community", "incident_along", user.id,
+              meta={"count": len(out), "corridor_m": body.corridor_m})
     return out[:100]
 
 

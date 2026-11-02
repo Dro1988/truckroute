@@ -124,6 +124,9 @@ const state = {
   user: null, prefs: null, trucks: [], activeTruck: null,
   dest: null, stops: [], addingStop: false, // multi-stop waypoints
   route: null, routeId: null, selOption: 0,
+  routeIncidents: [], // driver reports along the selected route (via /incidents/along)
+  routeRests: [],     // rest/parking suggestions along the route
+  restsBreakH: null,  // break interval (hrs) the rest suggestions were timed to
   navigating: false, sessionId: null,
   pos: null, // {lat, lng, speed, bearing}
   incidents: [], // latest nearby incident feed
@@ -158,27 +161,35 @@ function initMapOnce() {
     attributionControl: { compact: true },
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass: true }), "bottom-right");
-  map.on("load", () => {
+  map.on("load", () => addRouteLayers());
+}
+function addRouteLayers() {
+  if (!map.getSource("route")) {
     map.addSource("route", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
     map.addLayer({ id: "route-line", type: "line", source: "route",
-      paint: { "line-color": "#3b82f6", "line-width": 6, "line-opacity": 0.95 } });
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": "#3b82f6", "line-width": 7, "line-opacity": 0.95 } });
+  }
+  if (!map.getSource("route-slow")) {
+    // Orange overlay where DRIVER-REPORTED slowdowns sit on the route.
+    map.addSource("route-slow", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+    map.addLayer({ id: "route-slow-line", type: "line", source: "route-slow",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": "#f97316", "line-width": 9, "line-opacity": 0.9 } });
+  }
+  if (!map.getSource("route-done")) {
     map.addSource("route-done", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
     map.addLayer({ id: "route-done-line", type: "line", source: "route-done",
-      paint: { "line-color": "#93a3bd", "line-width": 6, "line-opacity": 0.9 } });
-  });
+      paint: { "line-color": "#93a3bd", "line-width": 7, "line-opacity": 0.9 } });
+  }
 }
 function setMapStyle(name) {
   mapStyle = name;
   const keep = state.route ? state.route.options[state.selOption] : null;
   map.setStyle(STYLES[name] || STYLES.dark);
   map.once("style.load", () => {
-    map.addSource("route", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-    map.addLayer({ id: "route-line", type: "line", source: "route",
-      paint: { "line-color": "#3b82f6", "line-width": 6, "line-opacity": 0.95 } });
-    map.addSource("route-done", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-    map.addLayer({ id: "route-done-line", type: "line", source: "route-done",
-      paint: { "line-color": "#93a3bd", "line-width": 6, "line-opacity": 0.9 } });
-    if (keep) drawRoute(keep.shape);
+    addRouteLayers();
+    if (keep) { drawRoute(keep.shape); drawSlowdowns(keep); }
     if (gpsMarker) gpsMarker.addTo(map);
     if (destMarker) destMarker.addTo(map);
   });
@@ -542,7 +553,14 @@ function renderRouteOptions() {
     d.onclick = () => { state.selOption = i; renderRouteOptions(); drawRoute(o.shape); };
     box.appendChild(d);
   });
+  const sel = state.route.options[state.selOption];
+  const arrive = new Date(Date.now() + sel.duration_min * 60000);
+  $("sheet-big").textContent = fmtDur(sel.duration_min);
+  $("sheet-sub").textContent =
+    `${sel.distance_miles} mi · arrive ${arrive.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` +
+    ` · ${state.route.truck_safe ? "truck-safe route" : "not truck-checked"}`;
   renderStops();
+  refreshRouteExtras(sel);
 }
 function drawRoute(shape) {
   if (!map || !map.getSource("route")) return;
@@ -555,15 +573,203 @@ function fitRoute(shape) {
   c.forEach((p) => b.extend(p));
   map.fitBounds(b, { padding: 60 });
 }
+
+/* ============ along-route extras: reported slowdowns + rest stops ============
+   Slowdowns come ONLY from this app's own driver reports (POST
+   /api/incidents/along) — there is no live traffic feed, and the UI says so.
+   Rest stops come from the map-data places search along the route. */
+let extrasSeq = 0;
+function refreshRouteExtras(option) {
+  const seq = ++extrasSeq;
+  fetchRouteIncidents(option, seq);
+  fetchRouteRests(option, seq);
+}
+function cumMilesArr(coords) {
+  const cum = [0];
+  for (let i = 1; i < coords.length; i++)
+    cum.push(cum[i - 1] + haversineM(coords[i - 1][1], coords[i - 1][0], coords[i][1], coords[i][0]) / 1609.344);
+  return cum;
+}
+function nearestCoordIdx(coords, lat, lng) {
+  let bi = 0, bd = Infinity;
+  for (let i = 0; i < coords.length; i += 2) {
+    const d = haversineM(lat, lng, coords[i][1], coords[i][0]);
+    if (d < bd) { bd = d; bi = i; }
+  }
+  const lo = Math.max(0, bi - 2), hi = Math.min(coords.length - 1, bi + 2);
+  for (let i = lo; i <= hi; i++) {
+    const d = haversineM(lat, lng, coords[i][1], coords[i][0]);
+    if (d < bd) { bd = d; bi = i; }
+  }
+  return bi;
+}
+function subShapeAround(coords, idx, radiusM) {
+  let lo = idx, acc = 0;
+  while (lo > 0 && acc < radiusM) {
+    acc += haversineM(coords[lo][1], coords[lo][0], coords[lo - 1][1], coords[lo - 1][0]); lo--;
+  }
+  let hi = idx; acc = 0;
+  while (hi < coords.length - 1 && acc < radiusM) {
+    acc += haversineM(coords[hi][1], coords[hi][0], coords[hi + 1][1], coords[hi + 1][0]); hi++;
+  }
+  return coords.slice(lo, hi + 1);
+}
+async function fetchRouteIncidents(option, seq) {
+  const coords = option.shape.coordinates;
+  const step = Math.max(1, Math.floor(coords.length / 180));
+  const pts = coords.filter((_, i) => i % step === 0);
+  if (pts.length && pts[pts.length - 1] !== coords[coords.length - 1])
+    pts.push(coords[coords.length - 1]);
+  let items = [];
+  try {
+    items = await api.post("/api/incidents/along", { points: pts, corridor_m: 600 }) || [];
+  } catch (e) { items = []; }
+  if (seq !== extrasSeq || !state.route) return; // a newer route superseded us
+  state.routeIncidents = items;
+  drawSlowdowns(option);
+  renderAhead();
+}
+function drawSlowdowns(option) {
+  if (!map || !map.getSource("route-slow")) return;
+  const coords = option.shape.coordinates;
+  const feats = [];
+  (state.routeIncidents || []).filter((it) => it.slows_traffic).forEach((it) => {
+    const slice = subShapeAround(coords, nearestCoordIdx(coords, it.lat, it.lng), 320);
+    if (slice.length > 1)
+      feats.push({ type: "Feature", geometry: { type: "LineString", coordinates: slice }, properties: {} });
+  });
+  map.getSource("route-slow").setData({ type: "FeatureCollection", features: feats });
+}
+function renderAhead() {
+  const box = $("sheet-ahead");
+  const items = state.routeIncidents || [];
+  const slows = items.filter((i) => i.slows_traffic).length;
+  const chip = $("sheet-slow-chip");
+  chip.hidden = !slows;
+  if (slows)
+    chip.textContent = `🐢 ${slows} driver-reported slowdown${slows > 1 ? "s" : ""} ahead`;
+  box.innerHTML = "";
+  const h = document.createElement("h3"); h.textContent = "Ahead on your route";
+  const note = document.createElement("p"); note.className = "sheet-note";
+  note.textContent = "From TruckRoute driver reports — not a live traffic feed.";
+  box.appendChild(h); box.appendChild(note);
+  if (!items.length) {
+    const d = document.createElement("div");
+    d.className = "ahead-row";
+    d.innerHTML = `<span class="e">✅</span><span class="l">No driver-reported problems</span>`;
+    box.appendChild(d);
+  }
+  items.forEach((it) => {
+    const d = document.createElement("div");
+    d.className = "ahead-row" + (it.slows_traffic ? " slow" : "");
+    const age = it.age_min < 1 ? "just now" : `${it.age_min} min ago`;
+    d.innerHTML = `<span class="e"></span><span class="l"></span><span class="m"></span>`;
+    d.querySelector(".e").textContent = it.emoji;
+    d.querySelector(".l").textContent = it.label;
+    d.querySelector(".m").textContent = `${it.miles_along} mi ahead · ${age}`;
+    box.appendChild(d);
+  });
+  box.hidden = false;
+}
+async function fetchRouteRests(option, seq) {
+  const box = $("sheet-rests");
+  box.hidden = true; box.innerHTML = "";
+  state.routeRests = [];
+  const totalMi = option.distance_miles, coords = option.shape.coordinates;
+  if (totalMi < 60 || coords.length < 2) return;
+  const cum = cumMilesArr(coords);
+  const durH = option.duration_min / 60;
+  const avgMph = durH > 0 ? totalMi / durH : 55;
+  const targets = [];
+  const breakH = state.prefs && state.prefs.break_interval_hours;
+  state.restsBreakH = breakH && breakH > 0 ? breakH : null;
+  if (breakH && breakH > 0) {
+    for (let m = breakH * avgMph; m < totalMi - 25 && targets.length < 3; m += breakH * avgMph)
+      targets.push(m);
+  }
+  if (!targets.length)
+    (totalMi > 150 ? [0.4, 0.75] : [0.55]).forEach((f) => targets.push(totalMi * f));
+  const found = [], seen = new Set();
+  for (const t of targets) {
+    let ci = cum.findIndex((v) => v >= t);
+    if (ci < 0) ci = coords.length - 1;
+    const pt = { lat: coords[ci][1], lng: coords[ci][0] };
+    let items = [];
+    try {
+      items = await api.get(`/api/search/places?q=${encodeURIComponent("truck stop")}&lat=${pt.lat}&lng=${pt.lng}`);
+    } catch (e) { items = []; }
+    if (!items.length) {
+      try {
+        items = await api.get(`/api/search/places?q=${encodeURIComponent("rest area")}&lat=${pt.lat}&lng=${pt.lng}`);
+      } catch (e) { items = []; }
+    }
+    let best = null, bd = 30 * 1609.344;
+    (items || []).forEach((it) => {
+      const d = haversineM(pt.lat, pt.lng, it.lat, it.lng);
+      if (d < bd) { bd = d; best = it; }
+    });
+    if (best) {
+      const key = best.label + "|" + best.lat.toFixed(3) + "|" + best.lng.toFixed(3);
+      if (!seen.has(key)) {
+        seen.add(key);
+        found.push({ label: best.label, lat: best.lat, lng: best.lng,
+          miles: Math.round(cum[nearestCoordIdx(coords, best.lat, best.lng)]) });
+      }
+    }
+  }
+  if (seq !== extrasSeq || !state.route) return;
+  found.sort((a, b) => a.miles - b.miles);
+  state.routeRests = found;
+  renderRests();
+}
+function renderRests() {
+  const box = $("sheet-rests");
+  const rests = state.routeRests || [];
+  box.innerHTML = "";
+  const h = document.createElement("h3"); h.textContent = "Rest & parking on this route";
+  const note = document.createElement("p"); note.className = "sheet-note";
+  note.textContent = state.restsBreakH
+    ? `Timed around your break every ${state.restsBreakH}h (Account → Driving preferences), so a stop is there before your clock forces one. From map data (OpenStreetMap) — lots fill up, call ahead when you can. Planning estimates only, not an ELD.`
+    : "From map data (OpenStreetMap) — lots fill up, call ahead when you can. Tip: set a break interval in Account → Driving preferences and these get timed to your breaks. Planning estimates only, not an ELD.";
+  box.appendChild(h); box.appendChild(note);
+  if (!rests.length) {
+    const d = document.createElement("div");
+    d.className = "rest-row";
+    d.innerHTML = `<span class="e">🅿️</span><span class="l">None found in map data near this route</span>`;
+    box.appendChild(d);
+  }
+  rests.forEach((r) => {
+    const d = document.createElement("div");
+    d.className = "rest-row";
+    d.innerHTML = `<span class="e">🅿️</span><span class="l"></span><span class="m"></span><button>Add stop</button>`;
+    d.querySelector(".l").textContent = r.label;
+    d.querySelector(".m").textContent = `~${r.miles} mi in`;
+    d.querySelector("button").onclick = () => {
+      if (state.stops.length >= 10) { toast("Maximum 10 stops"); return; }
+      state.stops.push({ lat: r.lat, lng: r.lng, label: r.label });
+      drawStopMarkers();
+      calculateRoute();
+      toast("Rest stop added to your route");
+    };
+    box.appendChild(d);
+  });
+  box.hidden = false;
+}
 function clearRoute() {
   state.route = null; state.dest = null; state.stops = []; state.addingStop = false;
+  state.routeIncidents = []; state.routeRests = []; extrasSeq++;
   $("search-dest").placeholder = "Where to?";
   stopMarkers.forEach((m) => m.remove()); stopMarkers = [];
   if (map && map.getSource("route"))
     map.getSource("route").setData({ type: "FeatureCollection", features: [] });
+  if (map && map.getSource("route-slow"))
+    map.getSource("route-slow").setData({ type: "FeatureCollection", features: [] });
   if (map && map.getSource("route-done"))
     map.getSource("route-done").setData({ type: "FeatureCollection", features: [] });
   if (destMarker) { destMarker.remove(); destMarker = null; }
+  $("sheet-ahead").hidden = true;
+  $("sheet-rests").hidden = true;
+  $("sheet-slow-chip").hidden = true;
   $("route-panel").hidden = true;
 }
 $("btn-cancel-route").onclick = () => { clearRoute(); $("search-dest").value = ""; $("btn-clear-search").hidden = true; };
@@ -630,6 +836,7 @@ $("btn-close-summary").onclick = () => ($("modal-summary").hidden = true);
 /* ================= turn-by-turn navigation ================= */
 const nav = { maneuvers: [], coords: [], idx: 0, announced: {}, offCount: 0,
   lastFix: 0, startTime: 0,
+  driveMs: 0, lastTick: 0, breakSpokenCycle: -1, // HOS break planning (estimates)
   alertedIncidents: new Set(), lastIncidentRefresh: 0, wpHit: new Set() };
 
 $("btn-start-nav").onclick = async () => {
@@ -638,6 +845,7 @@ $("btn-start-nav").onclick = async () => {
   nav.maneuvers = o.maneuvers; nav.coords = o.shape.coordinates;
   nav.idx = 0; nav.announced = {}; nav.offCount = 0;
   nav.alertedIncidents = new Set(); nav.wpHit = new Set(); nav.lastIncidentRefresh = Date.now();
+  nav.driveMs = 0; nav.lastTick = Date.now(); nav.breakSpokenCycle = -1;
   state.navigating = true;
   if (NATIVE) { try { window.TruckRoute.startNavService(); } catch (e) {} }
   try {
@@ -699,6 +907,29 @@ async function navUpdate() {
   nav.lastFix = now;
   const { lat, lng } = state.pos;
   const near = nearestOnRoute(lat, lng);
+
+  // HOS break planning (estimate, not an ELD): accumulate wheel-turning
+  // time and count down to the driver's own break interval.
+  const tickNow = Date.now();
+  const dtMs = nav.lastTick ? Math.min(tickNow - nav.lastTick, 10000) : 0;
+  nav.lastTick = tickNow;
+  if ((state.pos.speed || 0) * 2.23694 > 3) nav.driveMs += dtMs;
+  const breakH = state.prefs && state.prefs.break_interval_hours;
+  const breakChip = $("nav-break");
+  if (breakH && breakH > 0) {
+    const breakMs = breakH * 3600000;
+    const cycle = Math.floor(nav.driveMs / breakMs);
+    const remainMs = breakMs - (nav.driveMs % breakMs);
+    breakChip.hidden = false;
+    breakChip.textContent =
+      `⏸ Break in ${fmtDur(remainMs / 60000)} · driving ${fmtDur(nav.driveMs / 60000)} (est.)`;
+    if (remainMs < 5 * 60000 && nav.breakSpokenCycle !== cycle) {
+      nav.breakSpokenCycle = cycle;
+      speak(`You have been driving about ${breakH} hours. A break is coming up. Rest stops for this route are in the trip summary.`);
+    }
+  } else {
+    breakChip.hidden = true;
+  }
 
   // waypoint arrival check (multi-stop)
   state.stops.forEach((s, i) => {
@@ -767,6 +998,7 @@ async function navUpdate() {
   $("nav-remain").textContent = remMi.toFixed(0);
   const mph = (state.pos.speed || 0) * 2.23694;
   $("nav-speed").textContent = state.pos.speed != null ? Math.round(mph) : "—";
+  $("nav-speed-big").textContent = state.pos.speed != null ? Math.round(mph) : "0";
   const elapsedMin = (Date.now() - nav.startTime) / 60000;
   const o0 = state.route.options[state.selOption];
   const leftMin = Math.max(0, o0.duration_min - elapsedMin);
