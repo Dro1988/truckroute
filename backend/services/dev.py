@@ -21,7 +21,11 @@ from .base import (
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 PHOTON_URL = "https://photon.komoot.io/api/"
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.nchc.org.tw/api/interpreter",
+]
 OSRM_URL = "https://router.project-osrm.org/route/v1/driving"
 HEADERS = {"User-Agent": "TruckRoute/1.0 (contact: support@truckroute.app)"}
 
@@ -127,11 +131,18 @@ class NominatimGeocoder(GeocodingService):
             f'  way["amenity"="parking"]["hgv"="yes"](around:{radius_m},{near.lat},{near.lng});\n'
             ");\nout center 80;"
         )
-        try:
-            r = httpx.post(OVERPASS_URL, data={"data": ql}, headers=HEADERS, timeout=30)
-            r.raise_for_status()
-            elements = r.json().get("elements", [])
-        except Exception:
+        # The main Overpass instance often refuses datacenter IPs (429/406);
+        # fail over to public mirrors before giving up.
+        elements = None
+        for url in OVERPASS_URLS:
+            try:
+                r = httpx.post(url, data={"data": ql}, headers=HEADERS, timeout=30)
+                r.raise_for_status()
+                elements = r.json().get("elements", [])
+                break
+            except Exception:
+                continue
+        if elements is None:
             return []
 
         def category_of(tags: dict) -> tuple[str, str]:
