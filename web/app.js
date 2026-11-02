@@ -696,13 +696,10 @@ async function fetchRouteRests(option, seq) {
     const pt = { lat: coords[ci][1], lng: coords[ci][0] };
     let items = [];
     try {
+      // One call per target: the backend POI search unions rest areas,
+      // services, fuel and HGV parking regardless of the query wording.
       items = await api.get(`/api/search/places?q=${encodeURIComponent("truck stop")}&lat=${pt.lat}&lng=${pt.lng}`);
     } catch (e) { items = []; }
-    if (!items.length) {
-      try {
-        items = await api.get(`/api/search/places?q=${encodeURIComponent("rest area")}&lat=${pt.lat}&lng=${pt.lng}`);
-      } catch (e) { items = []; }
-    }
     let best = null, bd = 30 * 1609.344;
     (items || []).forEach((it) => {
       const d = haversineM(pt.lat, pt.lng, it.lat, it.lng);

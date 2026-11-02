@@ -132,11 +132,12 @@ class NominatimGeocoder(GeocodingService):
             ");\nout center 80;"
         )
         # The main Overpass instance often refuses datacenter IPs (429/406);
-        # fail over to public mirrors before giving up.
+        # fail over to public mirrors before giving up. Per-endpoint timeout
+        # is short so a dead endpoint can't stall the caller for minutes.
         elements = None
         for url in OVERPASS_URLS:
             try:
-                r = httpx.post(url, data={"data": ql}, headers=HEADERS, timeout=30)
+                r = httpx.post(url, data={"data": ql}, headers=HEADERS, timeout=12)
                 r.raise_for_status()
                 elements = r.json().get("elements", [])
                 break
