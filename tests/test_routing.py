@@ -199,3 +199,41 @@ def test_calculate_endpoint_end_to_end(client, monkeypatch):
     # saved trip exists
     trips = client.get("/api/trips", headers=h).json()
     assert any(t["id"] == body["trip_id"] for t in trips)
+
+
+OVERPASS_PAYLOAD = {
+    "elements": [
+        {"type": "node", "lat": 33.760, "lon": -84.390,
+         "tags": {"amenity": "fuel", "name": "Pilot Travel Center",
+                  "addr:city": "Atlanta", "addr:state": "GA"}},
+        {"type": "way", "center": {"lat": 33.700, "lon": -84.300},
+         "tags": {"highway": "rest_area"}},
+        {"type": "node", "lat": 33.749, "lon": -84.388,
+         "tags": {"amenity": "parking", "hgv": "yes", "name": "Truck Parking Lot"}},
+        {"type": "node", "lat": 33.750, "lon": -84.389,
+         "tags": {"amenity": "parking", "name": "Car park (no hgv tag, not queried)"}},
+    ]
+}
+
+
+def test_dev_discover_overpass_parses_and_sorts(monkeypatch):
+    # discover() parses Overpass elements (nodes + way centers), labels
+    # unnamed POIs by kind, and sorts nearest-first.
+    monkeypatch.setattr(dev_mod.httpx, "post", lambda *a, **k: FakeResp(OVERPASS_PAYLOAD))
+    svc = dev_mod.NominatimGeocoder()
+    out = svc.discover("truck stop", GeoPoint(lat=33.749, lng=-84.388))
+    labels = [p.label for p in out]
+    assert labels[0] == "Truck Parking Lot"          # nearest first
+    assert "Pilot Travel Center" in labels
+    assert "Rest area" in labels                     # unnamed way -> kind label
+    pilot = next(p for p in out if p.label == "Pilot Travel Center")
+    assert pilot.category == "fuel"
+    assert "Atlanta" in pilot.address
+
+
+def test_dev_discover_overpass_failure_is_empty(monkeypatch):
+    def boom(*a, **k):
+        raise ConnectionError("down")
+    monkeypatch.setattr(dev_mod.httpx, "post", boom)
+    svc = dev_mod.NominatimGeocoder()
+    assert svc.discover("rest area", GeoPoint(lat=33.749, lng=-84.388)) == []

@@ -21,6 +21,7 @@ from .base import (
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 PHOTON_URL = "https://photon.komoot.io/api/"
+OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 OSRM_URL = "https://router.project-osrm.org/route/v1/driving"
 HEADERS = {"User-Agent": "TruckRoute/1.0 (contact: support@truckroute.app)"}
 
@@ -99,6 +100,77 @@ class NominatimGeocoder(GeocodingService):
 
     def geocode(self, query: str, limit: int = 5) -> list[PlaceResult]:
         return self._search(query, limit)
+
+    def discover(self, query: str, near: GeoPoint, limit: int = 15) -> list[PlaceResult]:
+        """Truck-place search via the Overpass API (OpenStreetMap POIs).
+
+        Nominatim free-text geocoding is a poor POI search (it mostly finds
+        addresses), so the dev provider queries OSM directly for the POI
+        kinds a truck driver needs: rest areas, highway services, fuel
+        stations (most travel plazas are tagged amenity=fuel), and parking
+        explicitly tagged for HGVs. Results are real OSM data, sorted by
+        distance. Coverage is only as good as OSM's mapping — where nothing
+        is mapped, this honestly returns nothing.
+        """
+        import math
+
+        radius_m = 30000
+        ql = (
+            "[out:json][timeout:20];\n(\n"
+            f'  node["highway"="rest_area"](around:{radius_m},{near.lat},{near.lng});\n'
+            f'  way["highway"="rest_area"](around:{radius_m},{near.lat},{near.lng});\n'
+            f'  node["highway"="services"](around:{radius_m},{near.lat},{near.lng});\n'
+            f'  way["highway"="services"](around:{radius_m},{near.lat},{near.lng});\n'
+            f'  node["amenity"="fuel"](around:{radius_m},{near.lat},{near.lng});\n'
+            f'  way["amenity"="fuel"](around:{radius_m},{near.lat},{near.lng});\n'
+            f'  node["amenity"="parking"]["hgv"="yes"](around:{radius_m},{near.lat},{near.lng});\n'
+            f'  way["amenity"="parking"]["hgv"="yes"](around:{radius_m},{near.lat},{near.lng});\n'
+            ");\nout center 80;"
+        )
+        try:
+            r = httpx.post(OVERPASS_URL, data={"data": ql}, headers=HEADERS, timeout=30)
+            r.raise_for_status()
+            elements = r.json().get("elements", [])
+        except Exception:
+            return []
+
+        def category_of(tags: dict) -> tuple[str, str]:
+            if tags.get("highway") == "rest_area":
+                return "rest_area", "Rest area"
+            if tags.get("highway") == "services":
+                return "services", "Highway services"
+            if tags.get("amenity") == "fuel":
+                return "fuel", "Fuel station"
+            if tags.get("amenity") == "parking":
+                return "parking", "Truck parking"
+            return "place", "Place"
+
+        out: list[tuple[float, PlaceResult]] = []
+        seen: set[tuple[str, float, float]] = set()
+        for el in elements:
+            tags = el.get("tags") or {}
+            lat = el.get("lat") or (el.get("center") or {}).get("lat")
+            lng = el.get("lon") or (el.get("center") or {}).get("lon")
+            if lat is None or lng is None:
+                continue
+            cat, default_label = category_of(tags)
+            label = tags.get("name") or tags.get("brand") or tags.get("operator") or default_label
+            key = (label, round(float(lat), 4), round(float(lng), 4))
+            if key in seen:
+                continue
+            seen.add(key)
+            addr_bits = [tags.get("addr:housenumber"), tags.get("addr:street"),
+                         tags.get("addr:city"), tags.get("addr:state")]
+            d = math.hypot((float(lat) - near.lat) * 111320.0,
+                           (float(lng) - near.lng) * 111320.0
+                           * max(0.2, math.cos(math.radians(near.lat))))
+            out.append((d, PlaceResult(
+                label=label,
+                address=" ".join(b for b in addr_bits if b),
+                lat=float(lat), lng=float(lng), category=cat,
+            )))
+        out.sort(key=lambda x: x[0])
+        return [p for _, p in out[:limit]]
 
 
 _OSRM_INSTRUCTIONS = {
