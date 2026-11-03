@@ -18,6 +18,7 @@ COST_PER_1K: dict[tuple[str, str], float] = {
     ("dev-osrm", "route"): 0.0,
     ("dev-nominatim", "geocode"): 0.0,
     ("dev-nominatim", "suggest"): 0.0,
+    ("tomtom", "traffic_along"): 0.0,  # free tier 2,500 calls/day
 }
 
 

@@ -21,6 +21,14 @@ class Settings:
     # Cost model: estimated USD per 1k provider calls, per operation.
     HERE_COST_PER_1K: float = float(os.environ.get("HERE_COST_PER_1K", "0.50"))
 
+    # TomTom live traffic (incidents + flow), server-side only. Dormant
+    # until TOMTOM_API_KEY is set — no key, no traffic feature anywhere.
+    # Free tier is 2,500 calls/day; the daily cap stays under it and the
+    # service caches corridor results so repeat queries cost 0 calls.
+    TOMTOM_API_KEY: str = os.environ.get("TOMTOM_API_KEY", "")
+    TOMTOM_DAILY_CALL_CAP: int = int(os.environ.get("TOMTOM_DAILY_CALL_CAP", "2400"))
+    TOMTOM_CACHE_TTL_S: int = int(os.environ.get("TOMTOM_CACHE_TTL_S", "300"))
+
     # Beta: everyone gets premium features while the MVP is being validated.
     BETA_ALL_PREMIUM: bool = os.environ.get("BETA_ALL_PREMIUM", "true").lower() == "true"
     # Comma-separated admin emails.

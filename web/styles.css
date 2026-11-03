@@ -235,6 +235,11 @@ button { font-family: inherit; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ahead-row .m, .rest-row .m { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .ahead-row.slow { border-color: var(--accent); }
+/* Live TomTom rows: red edge so they can't be confused with driver reports */
+.ahead-row.live { border-color: #ef4444; }
+.ahead-row .l .t { display: block; }
+.ahead-row .l .d { display: block; font-size: 12.5px; font-weight: 400; color: var(--muted);
+  white-space: normal; margin-top: 1px; }
 .rest-row button { flex: 0 0 auto; padding: 9px 13px; border-radius: 10px; border: none;
   background: var(--accent2); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; }
 

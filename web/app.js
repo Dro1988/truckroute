@@ -125,6 +125,7 @@ const state = {
   dest: null, stops: [], addingStop: false, // multi-stop waypoints
   route: null, routeId: null, selOption: 0,
   routeIncidents: [], // driver reports along the selected route (via /incidents/along)
+  routeTraffic: null, // live TomTom traffic along the route (via /traffic/along); null = not fetched / disabled
   routeRests: [],     // rest/parking suggestions along the route
   restsBreakH: null,  // break interval (hrs) the rest suggestions were timed to
   navigating: false, sessionId: null,
@@ -181,6 +182,14 @@ function addRouteLayers() {
       layout: { "line-cap": "round", "line-join": "round" },
       paint: { "line-color": "#f97316", "line-width": 9, "line-opacity": 0.9 } });
   }
+  if (!map.getSource("route-live-slow")) {
+    // Red overlay for LIVE TomTom slowdowns — a different source from
+    // driver reports, colored differently on purpose.
+    map.addSource("route-live-slow", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+    map.addLayer({ id: "route-live-slow-line", type: "line", source: "route-live-slow",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": "#ef4444", "line-width": 9, "line-opacity": 0.95 } });
+  }
   if (!map.getSource("route-done")) {
     map.addSource("route-done", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
     map.addLayer({ id: "route-done-line", type: "line", source: "route-done",
@@ -193,7 +202,7 @@ function setMapStyle(name) {
   map.setStyle(STYLES[name] || STYLES.dark);
   map.once("style.load", () => {
     addRouteLayers();
-    if (keep) { drawRoute(keep.shape); drawSlowdowns(keep); }
+    if (keep) { drawRoute(keep.shape); drawSlowdowns(keep); drawLiveSlowdowns(keep); }
     if (gpsMarker) gpsMarker.addTo(map);
     if (destMarker) destMarker.addTo(map);
   });
@@ -685,13 +694,16 @@ function fitRoute(shape) {
 }
 
 /* ============ along-route extras: reported slowdowns + rest stops ============
-   Slowdowns come ONLY from this app's own driver reports (POST
-   /api/incidents/along) — there is no live traffic feed, and the UI says so.
+   Driver-reported slowdowns come ONLY from this app's own reports (POST
+   /api/incidents/along) and stay labeled as such. LIVE traffic is a
+   separate TomTom feed (POST /api/traffic/along) rendered in its own
+   labeled section below — the two sources are never blended.
    Rest stops come from the map-data places search along the route. */
 let extrasSeq = 0;
 function refreshRouteExtras(option) {
   const seq = ++extrasSeq;
   fetchRouteIncidents(option, seq);
+  fetchRouteTraffic(option, seq);
   fetchRouteRests(option, seq);
 }
 function cumMilesArr(coords) {
@@ -725,11 +737,7 @@ function subShapeAround(coords, idx, radiusM) {
   return coords.slice(lo, hi + 1);
 }
 async function fetchRouteIncidents(option, seq) {
-  const coords = option.shape.coordinates;
-  const step = Math.max(1, Math.floor(coords.length / 180));
-  const pts = coords.filter((_, i) => i % step === 0);
-  if (pts.length && pts[pts.length - 1] !== coords[coords.length - 1])
-    pts.push(coords[coords.length - 1]);
+  const pts = downsamplePts(option.shape.coordinates);
   let items = [];
   try {
     items = await api.post("/api/incidents/along", { points: pts, corridor_m: 600 }) || [];
@@ -777,6 +785,104 @@ function renderAhead() {
     d.querySelector(".e").textContent = it.emoji;
     d.querySelector(".l").textContent = it.label;
     d.querySelector(".m").textContent = `${it.miles_along} mi ahead · ${age}`;
+    box.appendChild(d);
+  });
+  box.hidden = false;
+}
+/* ============ live traffic (TomTom) — separate from driver reports ============
+   Dormant unless the server has a TomTom key: the endpoint answers
+   enabled=false and this section never renders. When live data comes
+   back it gets its OWN labeled section and red route segments (driver
+   reports are orange) so the two sources can't be confused. */
+function downsamplePts(coords) {
+  const step = Math.max(1, Math.floor(coords.length / 180));
+  const pts = coords.filter((_, i) => i % step === 0);
+  if (pts.length && pts[pts.length - 1] !== coords[coords.length - 1])
+    pts.push(coords[coords.length - 1]);
+  return pts;
+}
+async function fetchRouteTraffic(option, seq) {
+  let resp = null;
+  try {
+    resp = await api.post("/api/traffic/along",
+      { points: downsamplePts(option.shape.coordinates), corridor_m: 600 });
+  } catch (e) { resp = null; }
+  if (seq !== extrasSeq || !state.route) return; // a newer route superseded us
+  state.routeTraffic = resp;
+  drawLiveSlowdowns(option);
+  renderLiveTraffic();
+}
+function drawLiveSlowdowns(option) {
+  if (!map || !map.getSource("route-live-slow")) return;
+  const coords = option.shape.coordinates;
+  const feats = [];
+  const t = state.routeTraffic;
+  if (t && t.enabled) {
+    (t.slowdowns || []).forEach((s) => {
+      const slice = subShapeAround(coords, nearestCoordIdx(coords, s.lat, s.lng), 420);
+      if (slice.length > 1)
+        feats.push({ type: "Feature", geometry: { type: "LineString", coordinates: slice }, properties: {} });
+    });
+  }
+  map.getSource("route-live-slow").setData({ type: "FeatureCollection", features: feats });
+}
+function renderLiveTraffic() {
+  const box = $("sheet-live");
+  const t = state.routeTraffic;
+  // No key on the server (or request failed): show nothing at all —
+  // exactly the pre-TomTom behavior.
+  if (!t || !t.enabled) { box.hidden = true; box.innerHTML = ""; return; }
+  box.innerHTML = "";
+  const h = document.createElement("h3"); h.textContent = "Live traffic — TomTom";
+  const note = document.createElement("p"); note.className = "sheet-note";
+  note.textContent = "Live data from TomTom — separate from the driver reports above.";
+  box.appendChild(h); box.appendChild(note);
+  if (!t.available) {
+    const d = document.createElement("div");
+    d.className = "ahead-row live";
+    d.innerHTML = `<span class="e">📡</span><span class="l"></span>`;
+    d.querySelector(".l").textContent = t.message || "Live traffic unavailable right now.";
+    box.appendChild(d);
+    box.hidden = false;
+    return;
+  }
+  if (t.message) {
+    const n = document.createElement("p"); n.className = "sheet-note";
+    n.textContent = t.message;
+    box.appendChild(n);
+  }
+  const inc = t.incidents || [], slow = t.slowdowns || [];
+  if (!inc.length && !slow.length) {
+    const d = document.createElement("div");
+    d.className = "ahead-row live";
+    d.innerHTML = `<span class="e">✅</span><span class="l">No live incidents or slowdowns</span>`;
+    box.appendChild(d);
+  }
+  // Merge by miles_along so the list reads in driving order.
+  const rows = [
+    ...inc.map((i) => ({ mi: i.miles_along, inc: i })),
+    ...slow.map((s) => ({ mi: s.miles_along, slow: s })),
+  ].sort((a, b) => a.mi - b.mi);
+  rows.forEach((r) => {
+    const d = document.createElement("div");
+    d.className = "ahead-row live";
+    if (r.inc) {
+      const it = r.inc;
+      d.innerHTML = `<span class="e"></span><span class="l"><span class="t"></span><span class="d"></span></span><span class="m"></span>`;
+      d.querySelector(".e").textContent = it.emoji;
+      d.querySelector(".t").textContent = it.label;
+      const sub = [it.description !== it.label ? it.description : "", it.road].filter(Boolean).join(" · ");
+      d.querySelector(".d").textContent = sub;
+      d.querySelector(".m").textContent =
+        `${it.miles_along} mi ahead` + (it.delay_min ? ` · ~${Math.round(it.delay_min)} min delay` : "");
+    } else {
+      const s = r.slow;
+      d.innerHTML = `<span class="e">🔴</span><span class="l"><span class="t">Slow traffic</span><span class="d"></span></span><span class="m"></span>`;
+      d.querySelector(".d").textContent = s.road_closure
+        ? "Road closed on this stretch"
+        : `Moving at ${s.current_mph} mph (free flow ${s.free_flow_mph} mph)`;
+      d.querySelector(".m").textContent = `${s.miles_along} mi ahead`;
+    }
     box.appendChild(d);
   });
   box.hidden = false;
@@ -864,17 +970,20 @@ function renderRests() {
 }
 function clearRoute() {
   state.route = null; state.dest = null; state.stops = []; state.addingStop = false;
-  state.routeIncidents = []; state.routeRests = []; extrasSeq++;
+  state.routeIncidents = []; state.routeTraffic = null; state.routeRests = []; extrasSeq++;
   $("search-dest").placeholder = "Where to?";
   stopMarkers.forEach((m) => m.remove()); stopMarkers = [];
   if (map && map.getSource("route"))
     map.getSource("route").setData({ type: "FeatureCollection", features: [] });
   if (map && map.getSource("route-slow"))
     map.getSource("route-slow").setData({ type: "FeatureCollection", features: [] });
+  if (map && map.getSource("route-live-slow"))
+    map.getSource("route-live-slow").setData({ type: "FeatureCollection", features: [] });
   if (map && map.getSource("route-done"))
     map.getSource("route-done").setData({ type: "FeatureCollection", features: [] });
   if (destMarker) { destMarker.remove(); destMarker = null; }
   $("sheet-ahead").hidden = true;
+  $("sheet-live").hidden = true;
   $("sheet-rests").hidden = true;
   $("sheet-slow-chip").hidden = true;
   $("route-panel").hidden = true;

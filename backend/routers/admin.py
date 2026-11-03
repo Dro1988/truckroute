@@ -21,6 +21,7 @@ def health(admin=Depends(get_admin_user)):
         "routing_provider": factory.routing_provider_name(),
         "geocode_provider": factory.geocode_provider_name(),
         "here_configured": factory.here_configured(),
+        "tomtom_configured": factory.tomtom_configured(),
         "time": datetime.utcnow().isoformat(),
     }
 

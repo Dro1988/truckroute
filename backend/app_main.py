@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 import models
 from config import get_settings
 from database import SessionLocal, engine
-from routers import admin, auth, incidents, nav, routes, saved, search, subscription, trips
+from routers import admin, auth, incidents, nav, routes, saved, search, subscription, traffic, trips
 from routers.trucks import pref_router, router as trucks_router
 
 settings = get_settings()
@@ -44,7 +44,7 @@ try:
 except Exception:
     traceback.print_exc()
 
-app = FastAPI(title=f"{settings.APP_NAME} API", version="3.1.0-mvp")
+app = FastAPI(title=f"{settings.APP_NAME} API", version="3.2.0-mvp")
 
 app.add_middleware(
     CORSMiddleware,
@@ -58,6 +58,7 @@ app.include_router(auth.router)
 app.include_router(trucks_router)
 app.include_router(pref_router)
 app.include_router(incidents.router)
+app.include_router(traffic.router)
 app.include_router(search.router)
 app.include_router(routes.router)
 app.include_router(trips.router)
@@ -83,7 +84,7 @@ async def _unhandled(request: Request, exc: Exception):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "app": settings.APP_NAME, "version": "3.1.0-mvp"}
+    return {"ok": True, "app": settings.APP_NAME, "version": "3.2.0-mvp"}
 
 
 # ---- serve the web dashboard (same backend, same accounts) ----

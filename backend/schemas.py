@@ -321,3 +321,40 @@ class AlongRouteIn(BaseModel):
 class IncidentAlongOut(IncidentOut):
     miles_along: float          # approx. distance from route start to the report
     slows_traffic: bool         # kind typically slows traffic (jam/accident/...)
+
+
+# ---- live traffic (TomTom) — separate source from driver reports ----
+class TrafficIncidentOut(BaseModel):
+    id: str
+    kind: str                   # accident | construction | closure | jam | hazard | weather | other
+    label: str
+    emoji: str
+    description: str            # TomTom's own event wording
+    lat: float
+    lng: float
+    miles_along: float
+    delay_min: Optional[float] = None
+    severity: int = 0           # TomTom magnitudeOfDelay 0..4
+    road: str = ""
+
+
+class TrafficSlowdownOut(BaseModel):
+    lat: float
+    lng: float
+    miles_along: float
+    current_mph: float
+    free_flow_mph: float
+    ratio: float                # current / free-flow speed, 0..1
+    road_closure: bool = False
+
+
+class TrafficAlongOut(BaseModel):
+    enabled: bool               # TOMTOM_API_KEY configured on the server
+    available: bool             # live data actually fetched (False = degraded honestly)
+    source: str = "tomtom"
+    source_label: str = "Live traffic — TomTom"
+    message: str = ""           # why unavailable / partial, when applicable
+    incidents: list[TrafficIncidentOut] = Field(default_factory=list)
+    slowdowns: list[TrafficSlowdownOut] = Field(default_factory=list)
+    calls_today: int = 0
+    daily_cap: int = 0
