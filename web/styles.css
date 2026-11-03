@@ -73,6 +73,17 @@ button { font-family: inherit; }
 .suggest-item .t { font-weight: 600; }
 .suggest-item .a { color: var(--muted); font-size: 13px; margin-top: 2px; }
 #map-controls { position: absolute; right: 12px; top: 84px; z-index: 5; display: flex; flex-direction: column; gap: 10px; }
+#style-menu { display: flex; flex-direction: column; gap: 6px; background: var(--card); border-radius: 14px; padding: 8px; box-shadow: 0 4px 18px rgba(0,0,0,.45); }
+#style-menu button { border: 0; background: transparent; color: var(--text, #fff); font-size: 15px; font-weight: 600; text-align: left; padding: 8px 10px; border-radius: 9px; cursor: pointer; white-space: nowrap; }
+#style-menu button:active { background: rgba(127,127,127,.25); }
+/* Navigation puck: direction cone + dot, rendered by the v3.1 rAF loop */
+.nav-puck { width: 48px; height: 48px; position: relative; pointer-events: none; }
+.nav-puck-cone { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+  background: conic-gradient(from -30deg at 50% 50%, rgba(59,130,246,.55) 0deg, rgba(59,130,246,.55) 60deg, transparent 60deg);
+  transform-origin: 50% 50%; will-change: transform; }
+.nav-puck-dot { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
+  background: #3b82f6; border: 3px solid #fff; box-shadow: 0 0 10px rgba(59,130,246,.85); }
+#nav-lane { font-size: 16px; font-weight: 700; color: #7cc4ff; margin-top: 2px; }
 .icon-btn { width: 52px; height: 52px; border-radius: 50%; font-size: 22px; background: var(--card);
   color: var(--text); border: 1px solid var(--line); cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
 #gps-banner { position: absolute; top: calc(76px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);

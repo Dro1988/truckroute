@@ -222,6 +222,47 @@ def _osrm_instruction(step: dict) -> str:
     return base + "."
 
 
+def _lane_info(step: dict) -> tuple[list[dict], str]:
+    """Lane guidance from the step's first intersection — REAL OSRM data
+    (sourced from OSM turn:lanes tagging). Returns ([], "") wherever the
+    data isn't there or a side can't be stated with confidence: lane
+    guidance is never guessed."""
+    man = step.get("maneuver", {})
+    if man.get("type") in ("depart", "arrive", None):
+        return [], ""
+    inter = step.get("intersections") or []
+    lanes: list[dict] = []
+    if inter:
+        for ln in inter[0].get("lanes") or []:
+            lanes.append({
+                "indications": list(ln.get("indications") or []),
+                "valid": bool(ln.get("valid")),
+            })
+    if len(lanes) < 2:
+        return lanes, ""
+    modifier = (man.get("modifier") or "").lower()
+    if "uturn" in modifier:
+        want = "uturn"
+    elif "left" in modifier:
+        want = "left"
+    elif "right" in modifier:
+        want = "right"
+    else:
+        return lanes, ""
+    valid_idx = [i for i, l in enumerate(lanes)
+                 if l["valid"] and want in l["indications"]]
+    n, k = len(lanes), len(valid_idx)
+    if not valid_idx or k >= n:
+        return lanes, ""
+    if valid_idx == list(range(k)):
+        side = "left"
+    elif valid_idx == list(range(n - k, n)):
+        side = "right"
+    else:
+        return lanes, ""  # route uses middle lanes — don't mislabel a side
+    return lanes, (f"Use the {side} lane" if k == 1 else f"Use the {side} {k} lanes")
+
+
 class OsrmRouter(RoutingService):
     name = "dev-osrm"
 
@@ -268,6 +309,7 @@ class OsrmRouter(RoutingService):
                 for step in leg.get("steps", []):
                     man = step.get("maneuver", {})
                     loc = man.get("location", [0, 0])
+                    lanes, lane_hint = _lane_info(step)
                     maneuvers.append(
                         Maneuver(
                             index=len(maneuvers),
@@ -276,6 +318,8 @@ class OsrmRouter(RoutingService):
                             instruction=_osrm_instruction(step),
                             distance_m=step.get("distance", 0),
                             duration_s=step.get("duration", 0),
+                            lanes=lanes,
+                            lane_hint=lane_hint,
                         )
                     )
             options.append(

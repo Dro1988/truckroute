@@ -34,6 +34,7 @@ public class MainActivity extends Activity {
         s.setUseWideViewPort(true);
 
         bridge = new TruckRouteBridge(this);
+        bridge.attachWebView(webView);
         webView.addJavascriptInterface(bridge, "TruckRoute");
         webView.setWebViewClient(new WebViewClient());
         webView.setWebChromeClient(new WebChromeClient());

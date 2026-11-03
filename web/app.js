@@ -162,6 +162,10 @@ function initMapOnce() {
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass: true }), "bottom-right");
   map.on("load", () => addRouteLayers());
+  // Follow mode ends only on a REAL user pan/zoom gesture — v3.0 killed it
+  // on any pointerdown anywhere (including HUD button taps), forever.
+  map.on("dragstart", (e) => { if (e.originalEvent) followMode = false; });
+  map.on("zoomstart", (e) => { if (e.originalEvent) followMode = false; });
 }
 function addRouteLayers() {
   if (!map.getSource("route")) {
@@ -195,26 +199,135 @@ function setMapStyle(name) {
   });
 }
 $("btn-style").onclick = () => {
-  const order = ["dark", "light", "satellite"];
-  setMapStyle(order[(order.indexOf(mapStyle) + 1) % order.length]);
-  toast("Map: " + mapStyle);
+  const menu = $("style-menu");
+  menu.hidden = !menu.hidden;
 };
+$("style-menu").querySelectorAll("button").forEach((b) => {
+  b.onclick = () => {
+    $("style-menu").hidden = true;
+    if (b.dataset.style !== mapStyle) {
+      setMapStyle(b.dataset.style);
+      toast("Map: " + b.dataset.style);
+    }
+  };
+});
 
-let gpsMarker = null, destMarker = null;
-function updateGpsMarker() {
-  if (!map || !state.pos) return;
-  const el = document.createElement("div");
-  el.style.cssText = "width:20px;height:20px;border-radius:50%;background:#3b82f6;border:3px solid #fff;box-shadow:0 0 10px rgba(59,130,246,.8)";
-  if (!gpsMarker) {
-    gpsMarker = new maplibregl.Marker({ element: el }).setLngLat([state.pos.lng, state.pos.lat]).addTo(map);
-    map.flyTo({ center: [state.pos.lng, state.pos.lat], zoom: 13 });
-  } else {
-    gpsMarker.setLngLat([state.pos.lng, state.pos.lat]);
+let gpsMarker = null, destMarker = null, puckConeEl = null;
+
+/* ---- GPS follow engine (v3.1) ----
+ * Why v3.0 felt loose: native fixes were requested at 2000ms/5m AND the
+ * page polled for them every 2000ms (up to ~4s of lag), the puck teleported
+ * fix-to-fix, the camera re-centered in north-up jumps, and a pointerdown
+ * ANYWHERE (even tapping a HUD button) permanently disabled follow mode.
+ * v3.1: fixes stream in at ~1Hz (native push / watchPosition), a rAF loop
+ * dead-reckons + eases the puck between fixes and snaps it to the route
+ * line while navigating, and the camera follows with bearing rotation and
+ * look-ahead. Follow mode now ends only on a real map pan/zoom gesture
+ * and returns via the recenter button. */
+const puck = {
+  fix: null,      // latest raw fix {lat,lng,speed,bearing,time}
+  disp: null,     // displayed (smoothed) {lat,lng}
+  dispBrg: 0,     // displayed (smoothed) bearing, degrees
+  lastFixAt: 0,   // performance.now() of latest fix
+  raf: 0, _lastFrame: 0,
+};
+let followMode = true;
+let lastCamAt = 0;
+
+function onPos(fix) {
+  if (!fix || fix.lat == null || fix.lng == null) return;
+  if (fix.time && puck.fix && puck.fix.time && fix.time <= puck.fix.time) return; // stale/dup
+  state.pos = { lat: fix.lat, lng: fix.lng, speed: fix.speed || 0, bearing: fix.bearing || 0 };
+  puck.fix = { lat: fix.lat, lng: fix.lng, speed: fix.speed || 0,
+               bearing: fix.bearing || 0, time: fix.time || Date.now() };
+  puck.lastFixAt = performance.now();
+  if (!puck.disp) {
+    puck.disp = { lat: fix.lat, lng: fix.lng };
+    puck.dispBrg = fix.bearing || 0;
+    if (map && followMode && !state.navigating)
+      map.flyTo({ center: [fix.lng, fix.lat], zoom: Math.max(map.getZoom(), 13) });
   }
+  $("gps-banner").hidden = true;
+  ensurePuckMarker();
+  startPuckLoop();
+  if (state.navigating) navUpdate();
 }
+
+function ensurePuckMarker() {
+  if (!map || gpsMarker || !puck.disp) return;
+  const el = document.createElement("div");
+  el.className = "nav-puck";
+  el.innerHTML = '<div class="nav-puck-cone"></div><div class="nav-puck-dot"></div>';
+  puckConeEl = el.querySelector(".nav-puck-cone");
+  gpsMarker = new maplibregl.Marker({ element: el })
+    .setLngLat([puck.disp.lng, puck.disp.lat]).addTo(map);
+}
+
+function angLerp(a, b, t) {
+  const d = ((b - a + 540) % 360) - 180;
+  return (a + d * t + 360) % 360;
+}
+function destPoint(lat, lng, brgDeg, distM) {
+  const R = 6371000, t = Math.PI / 180;
+  const la1 = lat * t, lo1 = lng * t, br = brgDeg * t, dr = distM / R;
+  const la2 = Math.asin(Math.sin(la1) * Math.cos(dr) + Math.cos(la1) * Math.sin(dr) * Math.cos(br));
+  const lo2 = lo1 + Math.atan2(Math.sin(br) * Math.sin(dr) * Math.cos(la1),
+                               Math.cos(dr) - Math.sin(la1) * Math.sin(la2));
+  return { lat: la2 / t, lng: lo2 / t };
+}
+
+function startPuckLoop() {
+  if (puck.raf) return;
+  const step = () => {
+    puck.raf = requestAnimationFrame(step);
+    if (!map || !gpsMarker || !puck.disp || !puck.fix) return;
+    const now = performance.now();
+    const dt = puck._lastFrame ? Math.min(0.1, (now - puck._lastFrame) / 1000) : 0.016;
+    puck._lastFrame = now;
+    const f = puck.fix;
+    // Dead-reckon the target from the last fix, then ease toward it.
+    const ageS = Math.min(2.5, (now - puck.lastFixAt) / 1000);
+    let tgt = (f.speed > 1 && f.bearing)
+      ? destPoint(f.lat, f.lng, f.bearing, f.speed * ageS)
+      : { lat: f.lat, lng: f.lng };
+    // Snap to the route line while navigating (kills off-road GPS jitter).
+    if (state.navigating && nav.coords.length) {
+      const near = nearestOnRoute(tgt.lat, tgt.lng);
+      if (near.dist < 30) { const c = nav.coords[near.idx]; tgt = { lat: c[1], lng: c[0] }; }
+    }
+    const k = 1 - Math.exp(-dt / 0.12);
+    puck.disp = {
+      lat: puck.disp.lat + (tgt.lat - puck.disp.lat) * k,
+      lng: puck.disp.lng + (tgt.lng - puck.disp.lng) * k,
+    };
+    if (f.speed > 1 && f.bearing)
+      puck.dispBrg = angLerp(puck.dispBrg, f.bearing, 1 - Math.exp(-dt / 0.25));
+    gpsMarker.setLngLat([puck.disp.lng, puck.disp.lat]);
+    if (puckConeEl)
+      puckConeEl.style.transform = `rotate(${puck.dispBrg - map.getBearing()}deg)`;
+    // Camera follow
+    if (followMode && now - lastCamAt > 120) {
+      lastCamAt = now;
+      if (state.navigating) {
+        const look = destPoint(puck.disp.lat, puck.disp.lng, puck.dispBrg, 70);
+        map.easeTo({ center: [look.lng, look.lat], bearing: puck.dispBrg,
+                     pitch: 55, zoom: 16.5, duration: 240, easing: (t) => t });
+      } else {
+        const c = map.getCenter();
+        if (haversineM(c.lat, c.lng, puck.disp.lat, puck.disp.lng) > 25)
+          map.easeTo({ center: [puck.disp.lng, puck.disp.lat], duration: 240, easing: (t) => t });
+      }
+    }
+  };
+  puck.raf = requestAnimationFrame(step);
+}
+
 $("btn-recenter").onclick = () => {
-  if (state.pos && map) map.flyTo({ center: [state.pos.lng, state.pos.lat], zoom: 15 });
-  else toast("No GPS fix yet");
+  if (!state.pos || !map) { toast("No GPS fix yet"); return; }
+  followMode = true;
+  lastCamAt = 0;
+  if (!state.navigating)
+    map.flyTo({ center: [state.pos.lng, state.pos.lat], zoom: 15 });
 };
 
 /* ================= GPS + voice ================= */
@@ -222,19 +335,15 @@ let watchId = null, pollTimer = null;
 function startGps() {
   if (NATIVE) {
     try { window.TruckRoute.startGps(); } catch (e) {}
-    pollTimer = setInterval(pollNativeGps, 2000);
+    pollTimer = setInterval(pollNativeGps, 1000); // fallback; pushes are primary
     pollNativeGps();
   } else if ("geolocation" in navigator) {
     watchId = navigator.geolocation.watchPosition(
-      (p) => {
-        state.pos = { lat: p.coords.latitude, lng: p.coords.longitude,
-          speed: p.coords.speed || 0, bearing: p.coords.heading || 0 };
-        $("gps-banner").hidden = true;
-        updateGpsMarker();
-        if (state.navigating) navUpdate();
-      },
+      (p) => onPos({ lat: p.coords.latitude, lng: p.coords.longitude,
+                     speed: p.coords.speed || 0, bearing: p.coords.heading || 0,
+                     time: p.timestamp }),
       () => { $("gps-banner").hidden = false; $("gps-banner").textContent = "GPS unavailable — check location permission"; },
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
     );
   } else {
     $("gps-banner").hidden = false;
@@ -247,12 +356,11 @@ function pollNativeGps() {
     if (!raw) return;
     const p = JSON.parse(raw);
     if (!p || !p.lat) return;
-    state.pos = { lat: p.lat, lng: p.lng, speed: p.speed || 0, bearing: p.bearing || 0 };
-    $("gps-banner").hidden = true;
-    updateGpsMarker();
-    if (state.navigating) navUpdate();
+    onPos(p); // onPos dedupes fixes already delivered by push
   } catch (e) {}
 }
+// Native bridge pushes each fix the moment it arrives (~1Hz).
+window.TruckRouteNative = { onLocation: (p) => { try { onPos(p); } catch (e) {} } };
 function speak(text) {
   if (state.prefs && state.prefs.voice_enabled === false) return;
   if (NATIVE) { try { window.TruckRoute.speak(text); return; } catch (e) {} }
@@ -558,7 +666,9 @@ function renderRouteOptions() {
   $("sheet-big").textContent = fmtDur(sel.duration_min);
   $("sheet-sub").textContent =
     `${sel.distance_miles} mi · arrive ${arrive.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` +
-    ` · ${state.route.truck_safe ? "truck-safe route" : "not truck-checked"}`;
+    ` · ${state.route.truck_safe ? "truck-safe route" : "not truck-checked"}` +
+    (state.route.load && state.route.load.special && !state.route.load.enforced
+      ? " · ⚠ load profile NOT enforced by this engine" : "");
   renderStops();
   refreshRouteExtras(sel);
 }
@@ -812,6 +922,9 @@ function openSummary() {
     <dt>Est. fuel</dt><dd>${fuel != null ? fuel + " gal" : "—"}</dd>
     <dt>Your range</dt><dd>${range != null ? range + " mi" : "—"}</dd>
     <dt>Routing</dt><dd>${r.truck_safe ? "✓ truck-safe" : "not truck-checked"}</dd>
+    ${r.load ? `<dt>Load</dt><dd style="font-size:15px">${escapeHtml(r.load.summary)}<br>${r.load.enforced
+      ? '<span style="color:#2f9e44">✓ restrictions enforced by routing provider</span>'
+      : '<span style="color:#f5a623">recorded — NOT enforced by this routing engine</span>'}</dd>` : ""}
     <dt>Truck</dt><dd style="font-size:15px">${r.truck_label || "—"}</dd>`;
   const w = $("summary-warnings"); w.innerHTML = "";
   r.warnings.forEach((msg) => {
@@ -844,6 +957,7 @@ $("btn-start-nav").onclick = async () => {
   nav.alertedIncidents = new Set(); nav.wpHit = new Set(); nav.lastIncidentRefresh = Date.now();
   nav.driveMs = 0; nav.lastTick = Date.now(); nav.breakSpokenCycle = -1;
   state.navigating = true;
+  followMode = true; lastCamAt = 0; // nav always starts in follow mode
   if (NATIVE) { try { window.TruckRoute.startNavService(); } catch (e) {} }
   try {
     const s = await api.post("/api/nav/start", { route_id: state.routeId });
@@ -860,6 +974,8 @@ $("btn-start-nav").onclick = async () => {
 
 $("btn-end-nav").onclick = async () => {
   state.navigating = false;
+  followMode = true; // restore gentle north-up follow
+  if (map) map.easeTo({ bearing: 0, pitch: 0, duration: 500 });
   if (NATIVE) { try { window.TruckRoute.stopNavService(); } catch (e) {} }
   try { if (state.sessionId) await api.post(`/api/nav/${state.sessionId}/end`); } catch (e) {}
   state.sessionId = null;
@@ -900,7 +1016,7 @@ function remainingMiles(fromIdx) {
 async function navUpdate() {
   if (!state.navigating || !state.pos || !nav.coords.length) return;
   const now = Date.now();
-  if (now - nav.lastFix < 2500) return; // don't thrash
+  if (now - nav.lastFix < 1000) return; // fixes now stream at ~1Hz
   nav.lastFix = now;
   const { lat, lng } = state.pos;
   const near = nearestOnRoute(lat, lng);
@@ -985,11 +1101,14 @@ async function navUpdate() {
     speak(`In ${(dTo / 1609.344).toFixed(1)} miles, ${m.instruction}`);
   } else if (dTo < 120 && !nav.announced[m.index + "-now"]) {
     nav.announced[m.index + "-now"] = 1;
-    speak(m.instruction);
+    speak(m.lane_hint ? `${m.instruction} ${m.lane_hint}.` : m.instruction);
   }
 
   // HUD
   $("nav-instruction").textContent = m.instruction;
+  const laneEl = $("nav-lane");
+  laneEl.textContent = m.lane_hint ? `🛣 ${m.lane_hint}` : "";
+  laneEl.hidden = !m.lane_hint;
   $("nav-dist").textContent = dTo < 1609 ? `${Math.round(dTo * 3.281)} ft` : `${(dTo / 1609.344).toFixed(1)} mi`;
   const remMi = remainingMiles(near.idx);
   $("nav-remain").textContent = remMi.toFixed(0);
@@ -1009,8 +1128,7 @@ async function navUpdate() {
       type: "Feature", geometry: { type: "LineString", coordinates: nav.coords.slice(0, near.idx + 1) }, properties: {},
     });
   }
-  // follow mode
-  if (map && !map._userMoved) map.setCenter([lng, lat]);
+  // camera follow is handled by the puck render loop (bearing + look-ahead)
 
   // incident feed refresh + proximity voice alerts
   if (now - nav.lastIncidentRefresh > 60000) {
@@ -1019,12 +1137,13 @@ async function navUpdate() {
   }
   checkIncidentAlerts();
 }
-if (typeof maplibregl !== "undefined") {
-  // track manual pans so follow mode doesn't fight the driver
-  document.addEventListener("pointerdown", () => { if (map) map._userMoved = true; }, true);
-}
+
 
 /* ================= trucks ================= */
+const LOAD_TYPE_LABELS = {
+  general: "General freight", flatbed: "Flatbed / open deck", tanker: "Tanker",
+  oversize: "Oversize / overweight (permit)", hazmat: "Hazmat (placarded)",
+};
 let editingTruck = null;
 async function loadTrucks() {
   try {
@@ -1038,6 +1157,7 @@ async function loadTrucks() {
       d.className = "card";
       d.innerHTML = `<div class="t">${escapeHtml(t.nickname || (t.make + " " + t.model).trim() || "Truck")}${t.is_active ? '<span class="badge">ACTIVE</span>' : ""}</div>
         <div class="s">${t.height_ft}'${t.height_in}" · ${(t.weight_lbs / 1000).toFixed(0)}k lbs · ${t.length_ft}' long · ${t.axle_count} axles</div>
+        <div class="s">🚛 Load: ${escapeHtml(LOAD_TYPE_LABELS[t.load_type] || "General freight")}${t.hazmat_class ? ` · Hazmat class ${t.hazmat_class}` : ""}${t.hazmat ? ` · ${escapeHtml(t.hazmat)}` : ""}</div>
         <div class="s">⛽ ${t.fuel_capacity_gal} gal · ${t.fuel_level_pct}% · ${t.avg_mpg} mpg → ~${t.fuel_range_miles} mi range</div>
         <div class="row">
           ${t.is_active ? "" : '<button data-act="active" class="primary">Set active</button>'}
@@ -1068,6 +1188,7 @@ function fillTruckForm(t) {
   v("t-tlft", t?.trailer_length_ft || ""); v("t-axles", t?.axle_count ?? 5);
   v("t-cap", t?.fuel_capacity_gal ?? 240); v("t-level", t?.fuel_level_pct ?? 100);
   v("t-mpg", t?.avg_mpg ?? 7.2); v("t-fueltype", t?.fuel_type || "diesel"); v("t-hazmat", t?.hazmat || "");
+  v("t-loadtype", t?.load_type || "general"); v("t-hazmatclass", t?.hazmat_class || "");
   $("truck-form-error").textContent = "";
 }
 $("btn-save-truck").onclick = async () => {
@@ -1082,6 +1203,8 @@ $("btn-save-truck").onclick = async () => {
     fuel_level_pct: num("t-level", 100), avg_mpg: num("t-mpg", 7.2),
     fuel_type: $("t-fueltype").value.trim() || "diesel",
     hazmat: $("t-hazmat").value.trim() || null,
+    load_type: $("t-loadtype").value,
+    hazmat_class: $("t-hazmatclass").value || null,
   };
   try {
     if (editingTruck) await api.put(`/api/trucks/${editingTruck.id}`, body);

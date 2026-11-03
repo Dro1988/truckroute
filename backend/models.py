@@ -65,6 +65,9 @@ class Truck(Base):
     avg_mpg: Mapped[float] = mapped_column(Float, default=7.0)
     fuel_type: Mapped[str] = mapped_column(String(20), default="diesel")
     hazmat: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # Load profile (v3.1): what is being hauled — see services/loads.py
+    load_type: Mapped[str] = mapped_column(String(30), default="general")
+    hazmat_class: Mapped[str | None] = mapped_column(String(10), nullable=True)
     is_commercial: Mapped[bool] = mapped_column(Boolean, default=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

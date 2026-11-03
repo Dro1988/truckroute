@@ -84,6 +84,11 @@
     <div id="map-controls">
       <button id="btn-recenter" class="icon-btn" title="Recenter">◎</button>
       <button id="btn-style" class="icon-btn" title="Map style">🗺</button>
+      <div id="style-menu" hidden>
+        <button data-style="dark">🌙 Dark</button>
+        <button data-style="light">☀️ Light</button>
+        <button data-style="satellite">🛰 Satellite</button>
+      </div>
       <button id="btn-parking" class="icon-btn" title="Find truck parking">🅿</button>
       <button id="btn-report" class="icon-btn" title="Report incident">⚠️</button>
     </div>
@@ -107,6 +112,7 @@
     <div id="nav-hud" hidden>
       <div id="nav-next">
         <div id="nav-instruction">—</div>
+        <div id="nav-lane" hidden></div>
         <div id="nav-dist">—</div>
         <div id="nav-break" hidden></div>
       </div>
@@ -173,7 +179,31 @@
         <label>Avg MPG<input id="t-mpg" type="number" step="0.1" value="7.2"></label>
         <label>Fuel type<input id="t-fueltype" value="diesel"></label>
         <label>Hazmat (if any)<input id="t-hazmat" placeholder="e.g. flammable"></label>
+        <label>Load type
+          <select id="t-loadtype">
+            <option value="general">General freight (van/reefer)</option>
+            <option value="flatbed">Flatbed / open deck</option>
+            <option value="tanker">Tanker</option>
+            <option value="oversize">Oversize / overweight — permit load</option>
+            <option value="hazmat">Hazmat (placarded)</option>
+          </select>
+        </label>
+        <label>Hazmat class (UN)
+          <select id="t-hazmatclass">
+            <option value="">None / not placarded</option>
+            <option value="1">Class 1 — Explosives</option>
+            <option value="2">Class 2 — Gases</option>
+            <option value="3">Class 3 — Flammable liquids</option>
+            <option value="4">Class 4 — Flammable solids</option>
+            <option value="5">Class 5 — Oxidizers / peroxides</option>
+            <option value="6">Class 6 — Toxic / poison</option>
+            <option value="7">Class 7 — Radioactive</option>
+            <option value="8">Class 8 — Corrosive</option>
+            <option value="9">Class 9 — Miscellaneous</option>
+          </select>
+        </label>
       </div>
+      <p class="fineprint">Oversize/overweight loads move on state-issued permits with designated routes — TruckRoute records your load profile and warns you, but no route shown is a permit route.</p>
       <div class="form-actions">
         <button id="btn-save-truck" class="btn-primary">Save truck</button>
         <button id="btn-cancel-truck" class="btn-ghost">Cancel</button>

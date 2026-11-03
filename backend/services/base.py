@@ -33,6 +33,10 @@ class Maneuver:
     instruction: str
     distance_m: float = 0.0
     duration_s: float = 0.0
+    # Lane guidance, ONLY when the provider's data actually carries lanes
+    # (OSRM intersections today). Empty = no lane data, say nothing.
+    lanes: list[dict] = field(default_factory=list)  # [{"indications": [...], "valid": bool}]
+    lane_hint: str = ""  # derived, e.g. "Use the left lane" — "" when not derivable
 
 
 @dataclass
@@ -62,8 +66,11 @@ class TruckSpec:
     weight_kg: int = 36287     # 80,000 lbs
     axle_count: int = 5
     trailer_count: int = 1
-    hazmat: str | None = None  # e.g. "flammable"
+    hazmat: str | None = None  # legacy free text, e.g. "flammable"
     label: str = ""
+    # Load profile (v3.1): what is being hauled, threaded end-to-end.
+    load_type: str = "general"        # see services/loads.LOAD_TYPES
+    hazmat_class: str | None = None   # UN class "1".."9" when placarded
 
 
 class GeocodingService(ABC):

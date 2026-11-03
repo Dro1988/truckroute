@@ -8,12 +8,22 @@ import android.content.Intent;
 import android.os.Build;
 import android.os.IBinder;
 
-/** Foreground service: keeps the process (and voice guidance) alive during
- *  navigation, including with the screen off. Location type service. */
+/** Foreground service: keeps navigation alive during a drive, including
+ *  with the screen off. Location-type service.
+ *
+ *  v3.1: the service itself starts the shared GpsTracker stream, so GPS
+ *  fixes keep flowing at nav rate even when the activity is paused or the
+ *  WebView is throttled — in v3.0 the service only held a notification
+ *  while location updates lived and died with the activity. */
 public class NavService extends Service {
 
     private static final String CHANNEL_ID = "truckroute-nav";
     private static final int NOTIF_ID = 42;
+    private static volatile boolean running = false;
+
+    public static boolean isRunning() {
+        return running;
+    }
 
     @Override
     public void onCreate() {
@@ -37,17 +47,22 @@ public class NavService extends Service {
          .setSmallIcon(android.R.drawable.ic_dialog_map)
          .setOngoing(true);
         startForeground(NOTIF_ID, b.build());
+        running = true;
+        // Own the GPS stream while navigating so background/screen-off
+        // doesn't degrade tracking.
+        GpsTracker.get(getApplicationContext()).start();
         return START_STICKY;
+    }
+
+    @Override
+    public void onDestroy() {
+        running = false;
+        stopForeground(true);
+        super.onDestroy();
     }
 
     @Override
     public IBinder onBind(Intent intent) {
         return null;
-    }
-
-    @Override
-    public void onDestroy() {
-        stopForeground(true);
-        super.onDestroy();
     }
 }

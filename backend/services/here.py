@@ -52,6 +52,16 @@ def _hazmat_value(hazmat: str | None) -> str | None:
     return key  # pass through; HERE will reject unknown values loudly
 
 
+def _spec_hazmat_value(truck: TruckSpec) -> str | None:
+    """UN hazmat class (v3.1 load profiles) wins; legacy free text falls back."""
+    from .loads import here_hazmat_value
+
+    cls_value = here_hazmat_value(truck.hazmat_class, None)
+    if cls_value:
+        return cls_value
+    return _hazmat_value(truck.hazmat)
+
+
 class HereRouter(RoutingService):
     name = "here"
 
@@ -87,7 +97,7 @@ class HereRouter(RoutingService):
         ]
         for wp in waypoints or []:
             params.append(("via", f"{wp.lat},{wp.lng}"))
-        hz = _hazmat_value(truck.hazmat)
+        hz = _spec_hazmat_value(truck)
         if hz:
             params.append(("truck[shippedHazardousGoods]", hz))
         if alternatives:

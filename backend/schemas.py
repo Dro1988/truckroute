@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 # ---------- Auth ----------
@@ -65,7 +65,21 @@ class TruckIn(BaseModel):
     avg_mpg: float = Field(default=7.0, ge=2, le=20)
     fuel_type: str = Field(default="diesel", max_length=20)
     hazmat: Optional[str] = Field(default=None, max_length=80)
+    load_type: str = Field(default="general", max_length=30)
+    hazmat_class: Optional[str] = Field(default=None, max_length=10)
     is_commercial: bool = True
+
+    @field_validator("load_type", mode="before")
+    @classmethod
+    def _valid_load_type(cls, v):
+        from services.loads import normalize_load_type
+        return normalize_load_type(v if isinstance(v, str) else "general")
+
+    @field_validator("hazmat_class", mode="before")
+    @classmethod
+    def _valid_hazmat_class(cls, v):
+        from services.loads import normalize_hazmat_class
+        return normalize_hazmat_class(v)
 
 
 class TruckOut(TruckIn):
@@ -133,6 +147,8 @@ class ManeuverOut(BaseModel):
     instruction: str
     distance_m: float = 0
     duration_s: float = 0
+    lanes: list[dict] = Field(default_factory=list)
+    lane_hint: str = ""
 
 
 class RouteOptionOut(BaseModel):
@@ -155,6 +171,8 @@ class CalculateRouteOut(BaseModel):
     provider: str
     truck_safe: bool
     truck_label: str = ""
+    # Load profile applied to this route + whether the provider enforced it.
+    load: Optional[dict] = None
     warnings: list[str] = Field(default_factory=list)
     options: list[RouteOptionOut]
     route_id: Optional[str] = None

@@ -9,6 +9,7 @@ from config import get_settings
 from database import get_db
 from routers._limits import rate_limit
 from services import factory
+from services import loads as load_mod
 from services.base import GeoPoint, TruckSpec
 from services.planning import fuel_for_trip, hos_estimate, remaining_range_miles
 from services.usage import log_usage
@@ -31,6 +32,8 @@ def _truck_spec(truck: models.Truck | None) -> TruckSpec:
         trailer_count=1,
         hazmat=truck.hazmat,
         label=truck.nickname or f"{truck.make} {truck.model}".strip() or "your truck",
+        load_type=getattr(truck, "load_type", None) or "general",
+        hazmat_class=getattr(truck, "hazmat_class", None),
     )
 
 
@@ -68,7 +71,8 @@ def calculate_route(
     )
     log_usage(
         db, svc.name, "route", user.id,
-        meta={"stops": 2 + len(body.waypoints), "truck_safe": result.truck_safe},
+        meta={"stops": 2 + len(body.waypoints), "truck_safe": result.truck_safe,
+              "load_type": spec.load_type, "hazmat_class": spec.hazmat_class},
     )
 
     prefs = (
@@ -102,6 +106,7 @@ def calculate_route(
                         index=m.index, lat=m.lat, lng=m.lng,
                         instruction=m.instruction, distance_m=m.distance_m,
                         duration_s=m.duration_s,
+                        lanes=m.lanes, lane_hint=m.lane_hint,
                     )
                     for m in opt.maneuvers
                 ],
@@ -117,6 +122,18 @@ def calculate_route(
             "This route does NOT account for truck height, weight, length, or hazmat "
             "restrictions. Verify clearances yourself."
         )
+    # Load-profile honesty: special loads get explicit enforcement status.
+    # load_warnings puts the NOT-enforced warning first when it applies.
+    warnings = load_mod.load_warnings(spec, result.truck_safe) + warnings
+    load_block = {
+        "type": spec.load_type,
+        "type_label": load_mod.LOAD_TYPES[spec.load_type]["label"],
+        "summary": load_mod.load_summary(spec),
+        "enforced": bool(result.truck_safe),
+        "special": load_mod.is_special_load(spec),
+        "permit_required": load_mod.needs_permit(spec),
+        "hazmat_class": spec.hazmat_class,
+    }
 
     route_id = None
     if options:
@@ -131,7 +148,8 @@ def calculate_route(
             maneuvers=[
                 {"index": m.index, "lat": m.lat, "lng": m.lng,
                  "instruction": m.instruction, "distance_m": m.distance_m,
-                 "duration_s": m.duration_s}
+                 "duration_s": m.duration_s,
+                 "lanes": m.lanes, "lane_hint": m.lane_hint}
                 for m in best.maneuvers
             ],
             alternatives=[
@@ -184,6 +202,7 @@ def calculate_route(
         provider=svc.name,
         truck_safe=result.truck_safe,
         truck_label=spec.label,
+        load=load_block,
         warnings=warnings,
         options=options,
         route_id=route_id,
