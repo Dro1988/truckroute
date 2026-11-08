@@ -110,7 +110,8 @@ if os.path.isdir(WEB_DIR):
     @app.get("/blog/{slug}", include_in_schema=False)
     def blog_post(slug: str):
         allowed = {"car-gps-rig-trouble": "car-gps-rig-trouble.html",
-                   "why-no-truck-mode": "why-no-truck-mode.html"}
+                   "why-no-truck-mode": "why-no-truck-mode.html",
+                   "planning-6-stop-day": "planning-6-stop-day.html"}
         if slug not in allowed:
             return JSONResponse(status_code=404, content={"detail": "Post not found"})
         return FileResponse(os.path.join(WEB_DIR, "blog", allowed[slug]))

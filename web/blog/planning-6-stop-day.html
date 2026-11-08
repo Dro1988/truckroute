@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-4M2E773EEL"></script>
+<script>window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'G-4M2E773EEL');</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planning a 6-Stop Day in a Truck: Waypoints, Legs, and Arrival Calls</title>
+<meta name="description" content="One stop is a delivery. Six stops is a day. How TruckRoute builds a multi-stop day once — up to 10 stops, per-leg miles and minutes, stops that survive a recalculation, and a voice announcement at each arrival.">
+<meta property="og:title" content="Planning a 6-Stop Day in a Truck: Waypoints, Legs, and Arrival Calls">
+<meta property="og:description" content="One stop is a delivery. Six stops is a day. How TruckRoute builds a multi-stop day once — up to 10 stops, per-leg miles and minutes, stops that survive a recalculation, and a voice announcement at each arrival.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://truckroute-api.onrender.com/blog/planning-6-stop-day">
+<link rel="stylesheet" href="/assets/styles.css">
+<style>
+  body { display: block; }
+  .blog-wrap { max-width: 720px; margin: 0 auto; padding: 32px 20px 64px; }
+  article { line-height: 1.75; font-size: 17px; }
+  article h1 { font-size: 32px; line-height: 1.25; margin-bottom: 4px; }
+  article h2 { font-size: 24px; margin-top: 36px; color: var(--accent); }
+  article p { color: #d7e0ee; margin: 16px 0; }
+  article ul { color: #d7e0ee; margin: 16px 0; padding-left: 24px; }
+  article li { margin: 8px 0; }
+  .post-date { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+  .honest-box { background: var(--card); border-left: 3px solid var(--accent); border-radius: var(--radius); padding: 16px 20px; margin: 24px 0; }
+  .honest-box p { margin: 0; font-style: italic; }
+  .cta-box { background: var(--card); border: 1px solid var(--accent); border-radius: var(--radius); padding: 20px; margin-top: 36px; }
+  .cta-box p { margin: 0 0 12px; }
+  .cta-box a.btn-primary { text-decoration: none; text-align: center; width: auto; display: inline-block; padding: 14px 28px; }
+  .back-nav { margin-top: 28px; }
+  .back-nav a { color: var(--accent); }
+</style>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","headline":"Planning a 6-Stop Day in a Truck: Waypoints, Legs, and Arrival Calls","description":"One stop is a delivery. Six stops is a day. How TruckRoute builds a multi-stop day once — up to 10 stops, per-leg miles and minutes, stops that survive a recalculation, and a voice announcement at each arrival.","url":"https://truckroute-api.onrender.com/blog/planning-6-stop-day","datePublished":"2026-11-08"}
+</script>
+</head>
+<body>
+<div class="blog-wrap">
+  <article>
+    <h1>Planning a 6-Stop Day in a Truck: Waypoints, Legs, and Arrival Calls</h1>
+    <div class="post-date">November 8, 2026</div>
+
+    <p>One stop is a delivery. Six stops is a day — and a day planned as six separate single trips wastes the day re-typing addresses, re-routing at every dock, and guessing at what is left.</p>
+
+    <p>TruckRoute's multi-stop planning is built for the second kind of day. You build the day once, read it leg by leg, change it mid-route when the day changes, and hear each arrival announced instead of having to remember it.</p>
+
+    <h2>1. Build the Day Once</h2>
+
+    <p>Add the day's stops in the order the day runs — <strong>up to 10 stops on one route</strong>.</p>
+
+    <p>That is the whole setup step. The route is one route for the whole day, not six unrelated trips stitched together in your head between stops. Each stop is a waypoint on the same plan, so the order you set in the morning is the order the navigation follows.</p>
+
+    <h2>2. Read It Leg by Leg</h2>
+
+    <p>A single total for the whole day hides where the day actually goes. Multi-stop shows it <strong>leg by leg: per-leg miles and minutes</strong> for each run between stops.</p>
+
+    <p>That changes the planning questions you can answer before you roll:</p>
+
+    <ul>
+      <li>Which leg is the long one, and where does the day actually get tight?</li>
+      <li>How far and how long is it from this dock to the next one — not just "how long is left overall"?</li>
+      <li>If a stop runs long, which leg absorbs it?</li>
+    </ul>
+
+    <p>No leg is a guess. Each run between waypoints carries its own distance and time on the same route screen.</p>
+
+    <h2>3. When the Day Changes Mid-Route</h2>
+
+    <p>Multi-drop days change. A stop gets added, a stop cancels, the order swaps. In TruckRoute you can <strong>add, remove, and reorder stops</strong> on the day you are already running — you do not start the plan over.</p>
+
+    <p>And if you go off-route and the route recalculates, <strong>the remaining stops survive the recalculation</strong> instead of vanishing. The recalc fixes the path to the next waypoint; it does not throw away the rest of the day. That distinction is the difference between a detour and a lost plan.</p>
+
+    <h2>4. Arrival Calls</h2>
+
+    <p>As you arrive at each waypoint, TruckRoute gives a <strong>voice announcement for the arrival</strong>.</p>
+
+    <p>On a six-stop day that is not a small thing. The next stop is announced, not remembered — no checking a paper list at a light, no counting stops in your head while you are backing in. Eyes stay on the work at the dock; the plan keeps its own place.</p>
+
+    <h2>The Honest Routing Line</h2>
+
+    <div class="honest-box">
+      <p>Community incident alerts are live now — weigh stations, low clearances, hazards ahead, reported by drivers. Truck-safe routing is in development.</p>
+    </div>
+
+    <p>That line is stated in substance on every TruckRoute routing page, and it applies to this one: community incident alerts are live; truck-safe routing is in development until the HERE key lands. Routing today uses keyless development providers, honestly labeled not truck-safe. Nothing in this post changes that, and no multi-stop feature described above is a truck-safe routing claim.</p>
+
+    <p>There is also no Play Store production claim to make here: TruckRoute is available through its install path, and public Play production is gated by Google's 12-tester rule.</p>
+
+    <h2>Pricing, If You Are Comparing</h2>
+
+    <p>TruckRoute is <strong>Free + Premium ~$7.99/month</strong> (configurable in the backend). That is the only price stated for TruckRoute, and it is stated the same way wherever TruckRoute pricing appears.</p>
+
+    <h2>Bottom Line</h2>
+
+    <ul>
+      <li>Build the day once: up to <strong>10 stops</strong> on one route, in the order the day runs</li>
+      <li>Read it leg by leg: <strong>per-leg miles and minutes</strong>, not one total that hides the day</li>
+      <li>Change it mid-route: add, remove, reorder — and remaining stops <strong>survive an off-route recalculation</strong></li>
+      <li>Hear each arrival: <strong>voice announcements at each waypoint</strong></li>
+      <li>Honest line, unchanged: community incident alerts are live now; truck-safe routing is in development</li>
+    </ul>
+
+    <p><em>For the incident side of the same app — weigh station open or closed, low clearances, and hazards reported by drivers — see the live TruckRoute incident and car-GPS posts on the <a href="/blog">TruckRoute blog</a>.</em></p>
+
+    <div class="cta-box">
+      <p><strong>Six stops is a day — plan it like one.</strong> TruckRoute builds the day once: up to 10 stops on one route, per-leg miles and minutes, and a voice announcement at each arrival.</p>
+      <a class="btn-primary" href="/install">Get the TruckRoute App</a>
+    </div>
+  </article>
+  <div class="back-nav"><a href="/blog">← All posts</a> · <a href="/">TruckRoute home</a></div>
+</div>
+</body>
+</html>
